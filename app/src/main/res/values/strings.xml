@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Dynamic Audio Mixer</string>
+    <string name="app_tagline">Real-time AI instrument detection &amp; adaptive audio profiles</string>
+    <string name="mode_heavy">Heavy / Intense</string>
+    <string name="mode_vocal">Vocal Focus</string>
+    <string name="mode_instrumental">Instrumental</string>
+    <string name="mode_bass">Deep Bass</string>
+    <string name="mode_treble">Crisp Treble</string>
+    <string name="mode_punchy">Punchy Rhythm</string>
+    <string name="fade_in_progress">Crossfading…</string>
+    <string name="auto_ai_mode">AI Auto-Mix</string>
+    <string name="manual_override">Manual Mode</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="reset_eq">Reset EQ</string>
+</resources>

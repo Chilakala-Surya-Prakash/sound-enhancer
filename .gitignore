@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+.env
+.env.*
+
+# Android & Gradle
+.gradle/
+.kotlin/
+**/build/
+**/local.properties
+.idea/
+*.apk
+*.log
+

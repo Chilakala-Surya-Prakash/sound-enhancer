@@ -1,0 +1,8 @@
+{
+  "name": "Dynamic Audio Mixer",
+  "description": "Creative 9-band Graphic Equalizer featuring Harmonic Spline Curve, precision channel faders, and dedicated Audio Enhancer DSP tuned for Android phone speaker and Bluetooth earphones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
+
