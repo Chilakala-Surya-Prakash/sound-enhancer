@@ -51,7 +51,6 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val state by vm.audioState.collectAsStateWithLifecycle()
-    var isDiagExpanded by remember { mutableStateOf(false) }
 
     val permissions = remember {
         buildList {
@@ -86,13 +85,6 @@ fun MainScreen(
                 permLauncher.launch(permissions)
             }
         }
-    }
-
-    fun copyDiagnosticLog() {
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Music Enhanced Diagnostic", state.diagnosticLog)
-        cm.setPrimaryClip(clip)
-        Toast.makeText(context, "Diagnostic Report copied to Clipboard!", Toast.LENGTH_SHORT).show()
     }
 
     Box(
@@ -299,7 +291,7 @@ fun MainScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Instrument Selection Chips (Support Click to Select / Click to Deselect)
+            // Active Detected Instruments & Solo Isolation Controls
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -310,105 +302,45 @@ fun MainScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Instrument Audio Profiles",
+                        "Live Playing Instruments",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = OnBackground
                     )
                     Text(
-                        if (state.selectedInstruments.isNotEmpty()) "Composite Mode (${state.selectedInstruments.size})" else if (!state.isAutoMode) "Manual Mode" else "Auto Mode",
+                        if (state.soloInstrument != null) "Solo Mode: ${state.soloInstrument?.displayName} (Muted Others)"
+                        else if (state.activeDetectedInstruments.isNotEmpty()) "Detected (${state.activeDetectedInstruments.size} Playing)"
+                        else "Detecting Audio...",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Primary
+                        color = if (state.soloInstrument != null) Primary else Muted
                     )
+                }
+
+                val displayedInstruments = if (state.activeDetectedInstruments.isNotEmpty()) {
+                    state.activeDetectedInstruments.toList()
+                } else {
+                    InstrumentType.entries.filter { it != InstrumentType.UNKNOWN }
                 }
 
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(InstrumentType.entries.filter { it != InstrumentType.UNKNOWN }) { inst ->
-                        val isChipSelected = inst in state.selectedInstruments
+                    items(displayedInstruments) { inst ->
+                        val isSoloed = state.soloInstrument == inst || inst in state.selectedInstruments
                         FilterChip(
-                            selected = isChipSelected,
+                            selected = isSoloed,
                             onClick = { vm.toggleInstrument(inst) },
-                            label = { Text("${inst.emoji} ${inst.displayName}") },
+                            label = {
+                                Text(
+                                    if (isSoloed) "🎧 ${inst.emoji} ${inst.displayName} (Solo)"
+                                    else "${inst.emoji} ${inst.displayName}"
+                                )
+                            },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = inst.color.copy(alpha = 0.25f),
+                                selectedContainerColor = inst.color.copy(alpha = 0.35f),
                                 selectedLabelColor = inst.color
                             )
                         )
-                    }
-                }
-            }
-
-            // Collapsible Real-Time Audio Diagnostic Telemetry Card
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = SurfaceVar,
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Rounded.BugReport, null, tint = Secondary, modifier = Modifier.size(20.dp))
-                            Text(
-                                "Audio Diagnostics & Telemetry",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = OnBackground
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { isDiagExpanded = !isDiagExpanded },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                if (isDiagExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                                contentDescription = "Toggle Diagnostics",
-                                tint = Muted
-                            )
-                        }
-                    }
-
-                    AnimatedVisibility(visible = isDiagExpanded) {
-                        Column(
-                            modifier = Modifier.padding(top = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.Black.copy(alpha = 0.5f))
-                                    .padding(12.dp)
-                            ) {
-                                Text(
-                                    text = if (state.diagnosticLog.isNotEmpty()) state.diagnosticLog else "Awaiting live audio telemetry...",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    color = Primary,
-                                    lineHeight = 16.sp
-                                )
-                            }
-
-                            Button(
-                                onClick = { copyDiagnosticLog() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Copy Diagnostic Report", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
                     }
                 }
             }

@@ -271,13 +271,13 @@ class AudioAlchemyService : Service() {
         }
         bassBoosts.values.forEach { bb ->
             try {
-                if (bb.strengthSupported) bb.setStrength(if (isEnhancer) 900.toShort() else 0.toShort())
+                if (bb.strengthSupported) bb.setStrength(if (isEnhancer) 1000.toShort() else 0.toShort())
                 bb.enabled = isEnhancer
             } catch (e: Exception) {}
         }
         loudnessEnhancers.values.forEach { le ->
             try {
-                le.setTargetGain(if (isEnhancer) 200 else 0)
+                le.setTargetGain(if (isEnhancer) 250 else 0)
                 le.enabled = isEnhancer
             } catch (e: Exception) {}
         }
@@ -322,66 +322,58 @@ class AudioAlchemyService : Service() {
         val spectrumBands = computeLogBands(mags, srHz, fft.size)
 
         val state = _audioState.value
-        val (instrument, confidence) = if (state.isAutoMode) {
+        val activeInstruments = instrumentDetector.detectActiveInstruments(fftResult, srHz, fft.size)
+        val (instrument, confidence) = if (state.isAutoMode && state.soloInstrument == null) {
             instrumentDetector.detect(fftResult, srHz, fft.size)
         } else {
             Pair(state.detectedInstrument, state.confidence)
         }
 
         var targetEQ = state.currentEQ
-        if (state.isAutoMode && instrument != InstrumentType.UNKNOWN) {
-            targetEQ = instrument.eqBands
-            val arr = targetEQ.toIntArray()
-            val spec9 = FloatArray(9)
-            val step = spectrumBands.size / 9
-            for (i in 0 until 9) {
-                var s = 0f
-                val start = i * step
-                val end = minOf(spectrumBands.size - 1, (i + 1) * step - 1)
-                for (j in start..end) s += spectrumBands[j]
-                spec9[i] = s / maxOf(1, end - start + 1)
-            }
-            for (i in 0 until 9) {
-                val mod = (spec9[i] * 3f).toInt()
-                arr[i] = (arr[i] + mod).coerceIn(-12, 12)
-            }
-            targetEQ = EQPreset(arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8])
+        if (state.soloInstrument != null) {
+            targetEQ = state.soloInstrument.soloEqBands
             applyGlobalEQ(targetEQ)
-        }
-
-        val now = System.currentTimeMillis()
-        var newDiagLog = state.diagnosticLog
-        if (now - lastDiagnosticTimeMs > 2000L) {
-            lastDiagnosticTimeMs = now
-            val bandGains = targetEQ.toIntArray().joinToString(", ") { "${it}dB" }
-            val hwLevels = getHardwareBandLevelsSummary()
-
-            newDiagLog = """
-                [MUSIC ENHANCED STUDIO DIAGNOSTIC]
-                Time: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(now))}
-                Active Audio Sessions: ${activeSessions.joinToString(", ") { "Session $it" }}
-                Studio Enhancer: ${state.isEnhancerEnabled} (3D Virtualizer + SubBass + Loudness)
-                Acoustic Profile: ${instrument.displayName} (Conf: ${(confidence * 100).toInt()}%)
-                Sample Rate: ${srHz}Hz | FFT Bins: ${fft.size / 2}
-                Peak: ${"%.3f".format(maxM)} | Dominant: ${"%.0f".format(domFreq)}Hz
-                Vocal/Music Ratio: ${"%.1f".format(vocalRatio * 100)}%
-                Master 9-Band EQ: [$bandGains]
-                Hardware EQ: $hwLevels
-            """.trimIndent()
-
-            Log.i(diagTag, newDiagLog)
+        } else if (state.isAutoMode && instrument != InstrumentType.UNKNOWN) {
+            targetEQ = instrument.eqBands
+            applyGlobalEQ(targetEQ)
         }
 
         _audioState.value = state.copy(
             spectrumBands = spectrumBands,
             detectedInstrument = instrument,
+            activeDetectedInstruments = activeInstruments,
             confidence = confidence,
             dominantFrequencyHz = domFreq,
             amplitude = maxM,
             vocalRatio = vocalRatio,
-            currentEQ = targetEQ,
-            diagnosticLog = newDiagLog
+            currentEQ = targetEQ
         )
+    }
+
+    fun toggleSoloInstrument(inst: InstrumentType) {
+        val current = _audioState.value
+        if (current.soloInstrument == inst) {
+            // Un-solo
+            _audioState.value = current.copy(
+                soloInstrument = null,
+                selectedInstruments = emptySet(),
+                isAutoMode = true,
+                activePresetMode = PresetMode.AUTO,
+                currentEQ = EQPreset.BALANCED
+            )
+            applyGlobalEQ(EQPreset.BALANCED)
+        } else {
+            // Solo selected instrument: boost instrument band (+12dB), mute everything else (-12dB)
+            val soloEQ = inst.soloEqBands
+            _audioState.value = current.copy(
+                soloInstrument = inst,
+                selectedInstruments = setOf(inst),
+                isAutoMode = false,
+                activePresetMode = PresetMode.CUSTOM,
+                currentEQ = soloEQ
+            )
+            applyGlobalEQ(soloEQ)
+        }
     }
 
     fun setPresetMode(mode: PresetMode) {
@@ -461,14 +453,7 @@ class AudioAlchemyService : Service() {
         val isEnhancer = _audioState.value.isEnhancerEnabled
         val targetFreqs = floatArrayOf(63f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f)
         val gains = preset.toIntArray()
-        val isoLoudnessBoost = if (isEnhancer) intArrayOf(7, 6, 4, 2, 1, 2, 2, 3, 3) else intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0)
-
-        var maxBoost = 0
-        for (i in gains.indices) {
-            val totalB = gains[i] + isoLoudnessBoost[i]
-            if (totalB > maxBoost) maxBoost = totalB
-        }
-        val headroomOffset = if (maxBoost > 4) -((maxBoost - 4) * 20) else 0
+        val isoLoudnessBoost = if (isEnhancer) intArrayOf(10, 8, 4, 3, 4, 5, 5, 6, 6) else intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0)
 
         equalizers.values.forEach { eq ->
             try {
@@ -488,7 +473,7 @@ class AudioAlchemyService : Service() {
                         }
                     }
                     val totalGainDb = gains[closestIdx] + isoLoudnessBoost[closestIdx]
-                    val rawMilliBels = (totalGainDb * 100) + headroomOffset
+                    val rawMilliBels = totalGainDb * 100
                     val milliBels = rawMilliBels.coerceIn(range[0].toInt(), range[1].toInt()).toShort()
                     eq.setBandLevel(band.toShort(), milliBels)
                 }

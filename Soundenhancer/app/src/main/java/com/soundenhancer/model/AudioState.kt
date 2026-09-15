@@ -6,7 +6,9 @@ data class AudioState(
     val isAutoMode: Boolean = true,
     val activePresetMode: PresetMode = PresetMode.AUTO,
     val detectedInstrument: InstrumentType = InstrumentType.UNKNOWN,
+    val activeDetectedInstruments: Set<InstrumentType> = emptySet(),
     val selectedInstruments: Set<InstrumentType> = emptySet(),
+    val soloInstrument: InstrumentType? = null,
     val confidence: Float = 0f,
     val spectrumBands: FloatArray = FloatArray(64),
     val currentEQ: EQPreset = EQPreset.BALANCED,
@@ -25,7 +27,9 @@ data class AudioState(
             isAutoMode == other.isAutoMode &&
             activePresetMode == other.activePresetMode &&
             detectedInstrument == other.detectedInstrument &&
+            activeDetectedInstruments == other.activeDetectedInstruments &&
             selectedInstruments == other.selectedInstruments &&
+            soloInstrument == other.soloInstrument &&
             confidence == other.confidence &&
             currentEQ == other.currentEQ &&
             dominantFrequencyHz == other.dominantFrequencyHz &&
@@ -42,7 +46,9 @@ data class AudioState(
         r = 31 * r + isAutoMode.hashCode()
         r = 31 * r + activePresetMode.hashCode()
         r = 31 * r + detectedInstrument.hashCode()
+        r = 31 * r + activeDetectedInstruments.hashCode()
         r = 31 * r + selectedInstruments.hashCode()
+        r = 31 * r + soloInstrument.hashCode()
         r = 31 * r + confidence.hashCode()
         r = 31 * r + currentEQ.hashCode()
         r = 31 * r + dominantFrequencyHz.hashCode()

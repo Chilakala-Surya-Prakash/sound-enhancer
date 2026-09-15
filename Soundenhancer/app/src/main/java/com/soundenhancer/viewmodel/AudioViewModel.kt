@@ -104,13 +104,26 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleInstrument(inst: InstrumentType) {
-        val currentSelected = audioState.value.selectedInstruments.toMutableSet()
-        if (currentSelected.contains(inst)) {
-            currentSelected.remove(inst)
-        } else {
-            currentSelected.add(inst)
+        service?.toggleSoloInstrument(inst) ?: run {
+            val isCurrentlySolo = _localAudioState.value.soloInstrument == inst
+            if (isCurrentlySolo) {
+                _localAudioState.value = _localAudioState.value.copy(
+                    soloInstrument = null,
+                    selectedInstruments = emptySet(),
+                    isAutoMode = true,
+                    activePresetMode = PresetMode.AUTO,
+                    currentEQ = EQPreset.BALANCED
+                )
+            } else {
+                _localAudioState.value = _localAudioState.value.copy(
+                    soloInstrument = inst,
+                    selectedInstruments = setOf(inst),
+                    isAutoMode = false,
+                    activePresetMode = PresetMode.CUSTOM,
+                    currentEQ = inst.soloEqBands
+                )
+            }
         }
-        setSelectedInstruments(currentSelected)
     }
 
     fun setSelectedInstruments(instruments: Set<InstrumentType>) {
