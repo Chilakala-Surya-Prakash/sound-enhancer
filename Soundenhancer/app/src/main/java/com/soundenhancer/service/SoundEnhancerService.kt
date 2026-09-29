@@ -50,6 +50,7 @@ class AudioAlchemyService : Service() {
 
     private var lastDiagnosticTimeMs = 0L
     private var isReceiverRegistered = false
+    private var lastMediaPackage: String = "None"
 
     // Intercept media session broadcasts from Spotify, YouTube Music, Apple Music, Poweramp, etc.
     private val mediaSessionReceiver = object : BroadcastReceiver() {
@@ -62,11 +63,15 @@ class AudioAlchemyService : Service() {
                 when (action) {
                     AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION -> {
                         Log.i(tag, "Media session opened by $pkg (Session ID: $sessionId). Attaching Studio DSP...")
+                        lastMediaPackage = pkg
                         attachSessionEffects(sessionId)
                         _audioState.value = _audioState.value.copy(activeSessionId = sessionId)
                     }
                     AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {
                         Log.i(tag, "Media session closed by $pkg (Session ID: $sessionId). Releasing session effects...")
+                        if (lastMediaPackage == pkg) {
+                            lastMediaPackage = "None"
+                        }
                         detachSessionEffects(sessionId)
                         if (_audioState.value.activeSessionId == sessionId) {
                             _audioState.value = _audioState.value.copy(activeSessionId = 0)
@@ -116,13 +121,30 @@ class AudioAlchemyService : Service() {
             startForeground(notifId, notif)
         }
         attachSessionEffects(0)
-        _audioState.value = _audioState.value.copy(isListening = true)
+        _audioState.value = _audioState.value.copy(
+            isListening = true,
+            diagnosticLog = """
+                [SOUND ENHANCER STUDIO DIAGNOSTIC]
+                Engine Status: ACTIVE (Global Session 0 Attached)
+                Studio Enhancer: ${if (_audioState.value.isEnhancerEnabled) "ON (3D Spatializer + SubBass Boost + Loudness)" else "OFF"}
+                Media App: $lastMediaPackage
+                Awaiting active audio stream from media player...
+            """.trimIndent()
+        )
         Log.d(tag, "Studio audio session attached (Session 0)")
     }
 
     fun stopListening() {
         releaseAllEffects()
-        _audioState.value = AudioState(isListening = false, isEnhancerEnabled = _audioState.value.isEnhancerEnabled)
+        _audioState.value = AudioState(
+            isListening = false,
+            isEnhancerEnabled = _audioState.value.isEnhancerEnabled,
+            diagnosticLog = """
+                [SOUND ENHANCER STUDIO DIAGNOSTIC]
+                Engine Status: INACTIVE (Hardware DSP Released)
+                Tap the power button to attach Studio DSP.
+            """.trimIndent()
+        )
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -338,6 +360,35 @@ class AudioAlchemyService : Service() {
             applyGlobalEQ(targetEQ)
         }
 
+        val now = System.currentTimeMillis()
+        var newDiagLog = state.diagnosticLog
+        if (now - lastDiagnosticTimeMs > 1200L) {
+            lastDiagnosticTimeMs = now
+            val bandGains = targetEQ.toIntArray().joinToString(", ") { "${it}dB" }
+            val hwLevels = getHardwareBandLevelsSummary()
+            val soloInfo = if (state.soloInstrument != null) "Solo Mode (${state.soloInstrument.displayName} +12dB, Others Muted)" else "Full Mix (No Solo)"
+            val liveInsts = if (activeInstruments.isNotEmpty()) activeInstruments.joinToString(", ") { "${it.emoji} ${it.displayName}" } else "Detecting..."
+            val activeSessionStr = if (activeSessions.isNotEmpty()) activeSessions.joinToString(", ") { "Session $it" } else "Global Session 0"
+
+            newDiagLog = """
+                [SOUND ENHANCER STUDIO DIAGNOSTIC]
+                Time: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(now))}
+                Media Player App: $lastMediaPackage
+                Active Sessions: $activeSessionStr
+                Studio Enhancer: ${if (state.isEnhancerEnabled) "ON (3D Spatializer 850 + SubBass 1000 + Loudness +2.5dB)" else "OFF"}
+                Solo Mode: $soloInfo
+                Live Instruments: $liveInsts
+                Primary Profile: ${instrument.displayName} (Confidence: ${(confidence * 100).toInt()}%)
+                Sample Rate: ${srHz}Hz | FFT Bins: ${fft.size / 2}
+                Peak Amplitude: ${"%.3f".format(maxM)} (${(maxM * 100).toInt()}%) | Dominant: ${"%.0f".format(domFreq)}Hz
+                Vocal/Music Energy: ${"%.1f".format(vocalRatio * 100)}%
+                Target 9-Band EQ: [$bandGains]
+                Hardware DSP Level: $hwLevels
+            """.trimIndent()
+
+            Log.i(diagTag, newDiagLog)
+        }
+
         _audioState.value = state.copy(
             spectrumBands = spectrumBands,
             detectedInstrument = instrument,
@@ -346,7 +397,8 @@ class AudioAlchemyService : Service() {
             dominantFrequencyHz = domFreq,
             amplitude = maxM,
             vocalRatio = vocalRatio,
-            currentEQ = targetEQ
+            currentEQ = targetEQ,
+            diagnosticLog = newDiagLog
         )
     }
 

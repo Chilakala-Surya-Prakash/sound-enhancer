@@ -87,6 +87,31 @@ fun MainScreen(
         }
     }
 
+    var isDiagExpanded by remember { mutableStateOf(false) }
+
+    fun copyDiagnosticLog() {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val report = if (state.diagnosticLog.isNotEmpty()) {
+            state.diagnosticLog
+        } else {
+            """
+            [SOUND ENHANCER STUDIO DIAGNOSTIC REPORT]
+            Engine Status: ${if (state.isListening) "Listening (Active)" else "Idle"}
+            Studio Enhancer: ${if (state.isEnhancerEnabled) "ON" else "OFF"}
+            Preset Mode: ${state.activePresetMode.displayName}
+            Solo Isolation: ${state.soloInstrument?.displayName ?: "None (Full Mix)"}
+            Live Detected: ${state.activeDetectedInstruments.joinToString { it.displayName }.ifEmpty { "None" }}
+            Dominant Frequency: ${state.dominantFrequencyHz.toInt()}Hz
+            Peak Amplitude: ${"%.3f".format(state.amplitude)}
+            Vocal Ratio: ${"%.1f".format(state.vocalRatio * 100)}%
+            EQ Band Levels: ${state.currentEQ.toIntArray().joinToString(", ") { "${it}dB" }}
+            """.trimIndent()
+        }
+        val clip = ClipData.newPlainText("Sound Enhancer Diagnostic", report)
+        cm.setPrimaryClip(clip)
+        Toast.makeText(context, "Diagnostic Report copied to Clipboard!", Toast.LENGTH_SHORT).show()
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -344,6 +369,201 @@ fun MainScreen(
                     }
                 }
             }
+
+            // Real-Time Audio Diagnostics & Telemetry Card
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = SurfaceVar,
+                border = BorderStroke(1.dp, if (isDiagExpanded) Primary.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.08f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Header Bar (Clickable to Expand/Collapse)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isDiagExpanded = !isDiagExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Primary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.BugReport,
+                                    contentDescription = null,
+                                    tint = Primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    "Audio Diagnostics & Telemetry",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = OnBackground
+                                )
+                                Text(
+                                    if (state.isListening && state.amplitude > 0.01f) "Real-time DSP stream active"
+                                    else if (state.isListening) "DSP listening • Awaiting audio"
+                                    else "Engine Standby",
+                                    fontSize = 11.sp,
+                                    color = if (state.isListening && state.amplitude > 0.01f) SpecHighMid else Muted
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Live Status Badge
+                            val statusBg = if (state.isListening && state.amplitude > 0.01f) Color(0xFF10B981)
+                                           else if (state.isListening) Color(0xFFF59E0B)
+                                           else Color(0xFF6B7280)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(statusBg.copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = if (state.isListening && state.amplitude > 0.01f) "LIVE"
+                                           else if (state.isListening) "WAITING"
+                                           else "IDLE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusBg
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { isDiagExpanded = !isDiagExpanded },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    if (isDiagExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                    contentDescription = "Toggle Diagnostics",
+                                    tint = Muted
+                                )
+                            }
+                        }
+                    }
+
+                    // Quick Telemetry Metric Chips
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val sessionText = if (state.activeSessionId != 0) "Sess #${state.activeSessionId}" else "Global #0"
+                        TelemetryChip(
+                            title = "SESSION",
+                            value = sessionText,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TelemetryChip(
+                            title = "PEAK AMP",
+                            value = "${(state.amplitude * 100).toInt()}%",
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TelemetryChip(
+                            title = "DOM FREQ",
+                            value = if (state.dominantFrequencyHz > 0) "${state.dominantFrequencyHz.toInt()}Hz" else "--",
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TelemetryChip(
+                            title = "SOLO",
+                            value = state.soloInstrument?.displayName?.take(6) ?: "OFF",
+                            valueColor = if (state.soloInstrument != null) Primary else OnSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Expanded Telemetry Terminal Console & Copy Action
+                    AnimatedVisibility(
+                        visible = isDiagExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(top = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(0xFF0A0C10))
+                                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = if (state.diagnosticLog.isNotEmpty()) state.diagnosticLog else "Awaiting live audio telemetry...\nPlay a track in Spotify, YouTube Music, Apple Music, or Poweramp to stream hardware DSP metrics.",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF34D399),
+                                    lineHeight = 17.sp
+                                )
+                            }
+
+                            Button(
+                                onClick = { copyDiagnosticLog() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Copy Diagnostic Report", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TelemetryChip(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = OnSurface
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.04f))
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = title,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Muted
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = value,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = valueColor,
+                maxLines = 1
+            )
         }
     }
 }
