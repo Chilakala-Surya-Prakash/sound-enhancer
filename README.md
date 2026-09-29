@@ -1,7 +1,7 @@
 # Sound Enhancer 🎵⚡
 
 [![GitHub Release](https://img.shields.io/github/v/release/Chilakala-Surya-Prakash/sound-enhancer?color=6d28d9&style=for-the-badge)](https://github.com/Chilakala-Surya-Prakash/sound-enhancer/releases/latest)
-[![Download APK](https://img.shields.io/badge/Download-Android%20APK-00E676?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Chilakala-Surya-Prakash/sound-enhancer/releases/download/v1.0.0/Soundenhancer-Studio.apk)
+[![Download APK](https://img.shields.io/badge/Download-Android%20APK-00E676?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Chilakala-Surya-Prakash/sound-enhancer/releases/download/v1.1.0/Soundenhancer-Studio.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
@@ -13,7 +13,8 @@
 
 Download the latest pre-compiled Android APK file:
 
-[📥 **Download Soundenhancer-Studio.apk (v1.0.0)**](https://github.com/Chilakala-Surya-Prakash/sound-enhancer/releases/download/v1.0.0/Soundenhancer-Studio.apk)
+[📥 **Download Soundenhancer-Studio.apk (v1.1.0)**](https://github.com/Chilakala-Surya-Prakash/sound-enhancer/releases/download/v1.1.0/Soundenhancer-Studio.apk)  
+*(or download from [Latest Release Direct Link](https://github.com/Chilakala-Surya-Prakash/sound-enhancer/releases/latest/download/Soundenhancer-Studio.apk))*
 
 ### How to Install on Android:
 1. Tap the download link above on your Android device.
@@ -31,6 +32,7 @@ Download the latest pre-compiled Android APK file:
 - **Audio Enhancer Master Engine**: Elevates the overall listening experience by boosting mid-range presence and high air so **all instrument layers across the track are clearly audible**.
 - **Real-Time Active Instrument Detection**: Continuously analyzes FFT audio spectrum data and displays **only the instruments currently being played in the music stream**.
 - **🎧 Instrument Solo Isolation Mode**: Click any detected instrument chip (e.g. Guitar, Vocals, Piano, Drums) to enter Solo Mode. The app boosts the selected instrument's primary & harmonic frequency bands (+12dB) while **muting all other instrument and vocal frequencies (-12dB)** so only that targeted sound is audible!
+- **📊 Real-Time Audio Diagnostics & Telemetry**: Monospaced diagnostic terminal displaying live streaming hardware DSP metrics, active media player package detection, dominant frequencies, peak amplitude, and one-tap report copying.
 - **9-Band Hardware Graphic Equalizer**: Precise manual gain adjustments across 63Hz to 16kHz.
 - **3D Spatial Surround Virtualizer (`Virtualizer`)**: Expands stereo soundstage imaging for headphones and external speakers.
 - **Dynamic Loudness Enhancer (`LoudnessEnhancer`)**: Elevates track dynamics without distortion.
