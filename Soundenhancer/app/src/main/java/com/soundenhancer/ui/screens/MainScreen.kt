@@ -36,9 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.audioalchemy.model.InstrumentType
 import com.audioalchemy.ui.components.EQPanel
-import com.audioalchemy.ui.components.InstrumentCard
 import com.audioalchemy.ui.components.PresetGrid
 import com.audioalchemy.ui.components.SpectrumVisualizer
 import com.audioalchemy.ui.theme.*
@@ -99,8 +97,6 @@ fun MainScreen(
             Engine Status: ${if (state.isListening) "Listening (Active)" else "Idle"}
             Studio Enhancer: ${if (state.isEnhancerEnabled) "ON" else "OFF"}
             Preset Mode: ${state.activePresetMode.displayName}
-            Solo Isolation: ${state.soloInstrument?.displayName ?: "None (Full Mix)"}
-            Live Detected: ${state.activeDetectedInstruments.joinToString { it.displayName }.ifEmpty { "None" }}
             Dominant Frequency: ${state.dominantFrequencyHz.toInt()}Hz
             Peak Amplitude: ${"%.3f".format(state.amplitude)}
             Vocal Ratio: ${"%.1f".format(state.vocalRatio * 100)}%
@@ -307,69 +303,6 @@ fun MainScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Instrument Isolation Card
-            InstrumentCard(
-                instrument = state.detectedInstrument,
-                selectedInstruments = state.selectedInstruments,
-                confidence = state.confidence,
-                dominantFreq = state.dominantFrequencyHz,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // Active Detected Instruments & Solo Isolation Controls
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Live Playing Instruments",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = OnBackground
-                    )
-                    Text(
-                        if (state.soloInstrument != null) "Solo Mode: ${state.soloInstrument?.displayName} (Muted Others)"
-                        else if (state.activeDetectedInstruments.isNotEmpty()) "Detected (${state.activeDetectedInstruments.size} Playing)"
-                        else "Detecting Audio...",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (state.soloInstrument != null) Primary else Muted
-                    )
-                }
-
-                val displayedInstruments = if (state.activeDetectedInstruments.isNotEmpty()) {
-                    state.activeDetectedInstruments.toList()
-                } else {
-                    InstrumentType.entries.filter { it != InstrumentType.UNKNOWN }
-                }
-
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(displayedInstruments) { inst ->
-                        val isSoloed = state.soloInstrument == inst || inst in state.selectedInstruments
-                        FilterChip(
-                            selected = isSoloed,
-                            onClick = { vm.toggleInstrument(inst) },
-                            label = {
-                                Text(
-                                    if (isSoloed) "🎧 ${inst.emoji} ${inst.displayName} (Solo)"
-                                    else "${inst.emoji} ${inst.displayName}"
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = inst.color.copy(alpha = 0.35f),
-                                selectedLabelColor = inst.color
-                            )
-                        )
-                    }
-                }
-            }
-
             // Real-Time Audio Diagnostics & Telemetry Card
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -483,9 +416,9 @@ fun MainScreen(
                         )
 
                         TelemetryChip(
-                            title = "SOLO",
-                            value = state.soloInstrument?.displayName?.take(6) ?: "OFF",
-                            valueColor = if (state.soloInstrument != null) Primary else OnSurface,
+                            title = "PRESET",
+                            value = state.activePresetMode.displayName.take(6),
+                            valueColor = Primary,
                             modifier = Modifier.weight(1f)
                         )
                     }
