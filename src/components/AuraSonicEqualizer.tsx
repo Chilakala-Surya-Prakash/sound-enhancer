@@ -22,6 +22,7 @@ import {
   Music
 } from 'lucide-react';
 import { audioEngine } from '../services/audioEngine';
+import { WiredEarphoneOptimizer } from './WiredEarphoneOptimizer';
 import { EQ_9_PRESETS, EQ_LABELS, EQ_FREQUENCIES, EqPresetConfig } from '../data/eq9Presets';
 import { EqPresetId, OutputDeviceMode } from '../types/audio';
 import { DEMO_TRACKS } from '../data/tracks';
@@ -889,6 +890,9 @@ export const AuraSonicEqualizer: React.FC = () => {
           })}
         </div>
       </section>
+
+      {/* IEM Frequency Response Correction Optimizer */}
+      <WiredEarphoneOptimizer />
 
       {/* Floating Studio Player & Output Pipeline Bar */}
       <footer className="fixed bottom-0 inset-x-0 z-40 bg-[#0c0e15]/95 backdrop-blur-2xl border-t border-slate-800/80 px-4 py-3 shadow-[0_-10px_30px_rgba(0,0,0,0.6)]">
