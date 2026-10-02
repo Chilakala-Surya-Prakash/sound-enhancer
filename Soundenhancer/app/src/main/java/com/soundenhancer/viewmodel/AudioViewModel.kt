@@ -12,6 +12,7 @@ import com.audioalchemy.model.AudioState
 import com.audioalchemy.model.EQPreset
 import com.audioalchemy.model.InstrumentType
 import com.audioalchemy.model.PresetMode
+import com.audioalchemy.model.SpatialMode
 import com.audioalchemy.service.AudioAlchemyService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
