@@ -2,9 +2,17 @@ package com.audioalchemy.model
 
 import androidx.compose.ui.graphics.Color
 
+enum class SpatialMode(val displayName: String, val defaultStrength: Int) {
+    STUDIO_NEARFIELD("Studio Nearfield", 400),
+    HEADPHONES_3D("3D Spatial Stage", 750),
+    CONCERT_HALL("Concert Hall", 1000)
+}
+
 enum class PresetMode(val displayName: String) {
     BALANCED("Studio Balanced"),
     BASS_BOOST("Studio Sub-Bass"),
+    HARMAN("Harman Reference"),
+    CLUB("Club & Electronic"),
     SMOOTH("Acoustic Warmth"),
     DYNAMIC("Master Dynamic"),
     CLEAR("Vocal & Air"),
@@ -30,6 +38,8 @@ data class EQPreset(
         // Harman & Studio Reference Mastering: Tight sub-punch, clean 250Hz mud-cut, forward 1-2kHz intimacy, 8-16kHz silky air
         val BALANCED = EQPreset(4, 3, 0, 1, 3, 4, 5, 6, 7)
         val BASS_BOOST = EQPreset(8, 7, 2, 0, 2, 3, 4, 5, 6)
+        val HARMAN = EQPreset(6, 4, 0, 0, 2, 4, 6, 7, 7)
+        val CLUB = EQPreset(10, 8, 2, 0, 1, 3, 5, 7, 8)
         val SMOOTH = EQPreset(4, 3, 1, 2, 3, 3, 3, 4, 5)
         val DYNAMIC = EQPreset(7, 5, 0, 1, 3, 5, 6, 7, 8)
         val CLEAR = EQPreset(2, 1, -1, 2, 5, 7, 7, 8, 8)
@@ -38,6 +48,8 @@ data class EQPreset(
         fun fromMode(mode: PresetMode): EQPreset = when (mode) {
             PresetMode.BALANCED -> BALANCED
             PresetMode.BASS_BOOST -> BASS_BOOST
+            PresetMode.HARMAN -> HARMAN
+            PresetMode.CLUB -> CLUB
             PresetMode.SMOOTH -> SMOOTH
             PresetMode.DYNAMIC -> DYNAMIC
             PresetMode.CLEAR -> CLEAR

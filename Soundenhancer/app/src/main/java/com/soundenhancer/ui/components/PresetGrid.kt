@@ -33,6 +33,8 @@ fun PresetGrid(
     val presets = listOf(
         PresetItem(PresetMode.BALANCED, "Balanced", Icons.Rounded.Equalizer),
         PresetItem(PresetMode.BASS_BOOST, "Bass boost", Icons.Rounded.Speaker),
+        PresetItem(PresetMode.HARMAN, "Harman target", Icons.Rounded.Headphones),
+        PresetItem(PresetMode.CLUB, "Club & dance", Icons.Rounded.MusicNote),
         PresetItem(PresetMode.SMOOTH, "Smooth", Icons.Rounded.Waves),
         PresetItem(PresetMode.DYNAMIC, "Dynamic", Icons.Rounded.ElectricBolt),
         PresetItem(PresetMode.CLEAR, "Clear", Icons.Rounded.CleanHands),

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.audioalchemy.ui.components.DSPControlPanel
 import com.audioalchemy.ui.components.EQPanel
 import com.audioalchemy.ui.components.PresetGrid
 import com.audioalchemy.ui.components.SpectrumVisualizer
@@ -96,6 +97,7 @@ fun MainScreen(
             [SOUND ENHANCER STUDIO DIAGNOSTIC REPORT]
             Engine Status: ${if (state.isListening) "Listening (Active)" else "Idle"}
             Studio Enhancer: ${if (state.isEnhancerEnabled) "ON" else "OFF"}
+            Hardware DSP: BassBoost ${state.bassBoostStrength / 10}% | Virtualizer ${state.virtualizerStrength / 10}% (${state.spatialMode.displayName}) | Loudness +${"%.1f".format(state.loudnessGainMb / 100.0)}dB
             Preset Mode: ${state.activePresetMode.displayName}
             Dominant Frequency: ${state.dominantFrequencyHz.toInt()}Hz
             Peak Amplitude: ${"%.3f".format(state.amplitude)}
@@ -285,6 +287,20 @@ fun MainScreen(
                 }
             }
 
+            // Hardware DSP Master Tuning (BassBoost, Virtualizer, LoudnessEnhancer)
+            DSPControlPanel(
+                isEnhancerEnabled = state.isEnhancerEnabled,
+                bassBoostStrength = state.bassBoostStrength,
+                virtualizerStrength = state.virtualizerStrength,
+                loudnessGainMb = state.loudnessGainMb,
+                spatialMode = state.spatialMode,
+                onBassBoostChanged = { strength -> vm.setBassBoostStrength(strength) },
+                onVirtualizerChanged = { strength -> vm.setVirtualizerStrength(strength) },
+                onSpatialModeSelected = { mode -> vm.setSpatialMode(mode) },
+                onLoudnessGainChanged = { gainMb -> vm.setLoudnessGain(gainMb) },
+                modifier = Modifier.fillMaxWidth()
+            )
+
             // 9-Band Interactive Graphic Equalizer Panel
             EQPanel(
                 preset = state.currentEQ,
@@ -419,6 +435,40 @@ fun MainScreen(
                             title = "PRESET",
                             value = state.activePresetMode.displayName.take(6),
                             valueColor = Primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TelemetryChip(
+                            title = "SUB-BASS",
+                            value = "${(state.bassBoostStrength / 10)}%",
+                            valueColor = Color(0xFFEF4444),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TelemetryChip(
+                            title = "3D STAGE",
+                            value = "${(state.virtualizerStrength / 10)}%",
+                            valueColor = Secondary,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TelemetryChip(
+                            title = "LOUD GAIN",
+                            value = "+${"%.1f".format(state.loudnessGainMb / 100.0)}dB",
+                            valueColor = Accent,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        TelemetryChip(
+                            title = "DSP ENGINE",
+                            value = if (state.isEnhancerEnabled) "ONLINE" else "STANDBY",
+                            valueColor = if (state.isEnhancerEnabled) Color(0xFF10B981) else Muted,
                             modifier = Modifier.weight(1f)
                         )
                     }

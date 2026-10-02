@@ -25,6 +25,7 @@ import com.audioalchemy.model.AudioState
 import com.audioalchemy.model.EQPreset
 import com.audioalchemy.model.InstrumentType
 import com.audioalchemy.model.PresetMode
+import com.audioalchemy.model.SpatialMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -155,6 +156,51 @@ class AudioAlchemyService : Service() {
         applyGlobalEQ(_audioState.value.currentEQ)
     }
 
+    fun setBassBoostStrength(strength: Int) {
+        val clamped = strength.coerceIn(0, 1000)
+        _audioState.value = _audioState.value.copy(bassBoostStrength = clamped)
+        bassBoosts.values.forEach { bb ->
+            try {
+                if (bb.strengthSupported) {
+                    bb.setStrength(if (_audioState.value.isEnhancerEnabled) clamped.toShort() else 0.toShort())
+                }
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to set BassBoost strength: ${e.message}")
+            }
+        }
+    }
+
+    fun setVirtualizerStrength(strength: Int) {
+        val clamped = strength.coerceIn(0, 1000)
+        _audioState.value = _audioState.value.copy(virtualizerStrength = clamped)
+        virtualizers.values.forEach { virt ->
+            try {
+                if (virt.strengthSupported) {
+                    virt.setStrength(if (_audioState.value.isEnhancerEnabled) clamped.toShort() else 0.toShort())
+                }
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to set Virtualizer strength: ${e.message}")
+            }
+        }
+    }
+
+    fun setSpatialMode(mode: SpatialMode) {
+        _audioState.value = _audioState.value.copy(spatialMode = mode)
+        setVirtualizerStrength(mode.defaultStrength)
+    }
+
+    fun setLoudnessGain(gainMb: Int) {
+        val clamped = gainMb.coerceIn(0, 1000)
+        _audioState.value = _audioState.value.copy(loudnessGainMb = clamped)
+        loudnessEnhancers.values.forEach { le ->
+            try {
+                le.setTargetGain(if (_audioState.value.isEnhancerEnabled) clamped else 0)
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to set LoudnessEnhancer target gain: ${e.message}")
+            }
+        }
+    }
+
     private fun registerSessionReceiver() {
         if (isReceiverRegistered) return
         try {
@@ -204,7 +250,7 @@ class AudioAlchemyService : Service() {
             try {
                 val virt = Virtualizer(0, sessionId).apply {
                     if (strengthSupported) {
-                        setStrength(if (_audioState.value.isEnhancerEnabled) 850.toShort() else 0.toShort())
+                        setStrength(if (_audioState.value.isEnhancerEnabled) _audioState.value.virtualizerStrength.toShort() else 0.toShort())
                     }
                     enabled = _audioState.value.isEnhancerEnabled
                 }
@@ -220,7 +266,7 @@ class AudioAlchemyService : Service() {
             try {
                 val bb = BassBoost(0, sessionId).apply {
                     if (strengthSupported) {
-                        setStrength(if (_audioState.value.isEnhancerEnabled) 900.toShort() else 0.toShort())
+                        setStrength(if (_audioState.value.isEnhancerEnabled) _audioState.value.bassBoostStrength.toShort() else 0.toShort())
                     }
                     enabled = _audioState.value.isEnhancerEnabled
                 }
@@ -235,7 +281,7 @@ class AudioAlchemyService : Service() {
         if (!loudnessEnhancers.containsKey(sessionId)) {
             try {
                 val le = LoudnessEnhancer(sessionId).apply {
-                    setTargetGain(if (_audioState.value.isEnhancerEnabled) 200 else 0) // +2.0dB transparent studio gain
+                    setTargetGain(if (_audioState.value.isEnhancerEnabled) _audioState.value.loudnessGainMb else 0)
                     enabled = _audioState.value.isEnhancerEnabled
                 }
                 loudnessEnhancers[sessionId] = le
@@ -285,21 +331,22 @@ class AudioAlchemyService : Service() {
 
     private fun applyStudioEnhancements() {
         val isEnhancer = _audioState.value.isEnhancerEnabled
+        val state = _audioState.value
         virtualizers.values.forEach { virt ->
             try {
-                if (virt.strengthSupported) virt.setStrength(if (isEnhancer) 850.toShort() else 0.toShort())
+                if (virt.strengthSupported) virt.setStrength(if (isEnhancer) state.virtualizerStrength.toShort() else 0.toShort())
                 virt.enabled = isEnhancer
             } catch (e: Exception) {}
         }
         bassBoosts.values.forEach { bb ->
             try {
-                if (bb.strengthSupported) bb.setStrength(if (isEnhancer) 1000.toShort() else 0.toShort())
+                if (bb.strengthSupported) bb.setStrength(if (isEnhancer) state.bassBoostStrength.toShort() else 0.toShort())
                 bb.enabled = isEnhancer
             } catch (e: Exception) {}
         }
         loudnessEnhancers.values.forEach { le ->
             try {
-                le.setTargetGain(if (isEnhancer) 250 else 0)
+                le.setTargetGain(if (isEnhancer) state.loudnessGainMb else 0)
                 le.enabled = isEnhancer
             } catch (e: Exception) {}
         }
@@ -370,15 +417,19 @@ class AudioAlchemyService : Service() {
             val liveInsts = if (activeInstruments.isNotEmpty()) activeInstruments.joinToString(", ") { "${it.emoji} ${it.displayName}" } else "Detecting..."
             val activeSessionStr = if (activeSessions.isNotEmpty()) activeSessions.joinToString(", ") { "Session $it" } else "Global Session 0"
 
+            val dspInfo = if (state.isEnhancerEnabled) {
+                "ON (SubBass ${state.bassBoostStrength / 10}% | 3D Spatial ${state.virtualizerStrength / 10}% [${state.spatialMode.displayName}] | Loudness +${"%.1f".format(state.loudnessGainMb / 100.0)}dB)"
+            } else {
+                "OFF"
+            }
+
             newDiagLog = """
                 [SOUND ENHANCER STUDIO DIAGNOSTIC]
                 Time: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(now))}
                 Media Player App: $lastMediaPackage
                 Active Sessions: $activeSessionStr
-                Studio Enhancer: ${if (state.isEnhancerEnabled) "ON (3D Spatializer 850 + SubBass 1000 + Loudness +2.5dB)" else "OFF"}
-                Solo Mode: $soloInfo
-                Live Instruments: $liveInsts
-                Primary Profile: ${instrument.displayName} (Confidence: ${(confidence * 100).toInt()}%)
+                Studio Enhancer: $dspInfo
+                Preset Mode: ${state.activePresetMode.displayName}
                 Sample Rate: ${srHz}Hz | FFT Bins: ${fft.size / 2}
                 Peak Amplitude: ${"%.3f".format(maxM)} (${(maxM * 100).toInt()}%) | Dominant: ${"%.0f".format(domFreq)}Hz
                 Vocal/Music Energy: ${"%.1f".format(vocalRatio * 100)}%

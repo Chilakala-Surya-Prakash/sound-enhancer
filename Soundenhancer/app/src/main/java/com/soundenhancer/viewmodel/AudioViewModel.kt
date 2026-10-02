@@ -74,6 +74,33 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setBassBoostStrength(strength: Int) {
+        service?.setBassBoostStrength(strength) ?: run {
+            _localAudioState.value = _localAudioState.value.copy(bassBoostStrength = strength.coerceIn(0, 1000))
+        }
+    }
+
+    fun setVirtualizerStrength(strength: Int) {
+        service?.setVirtualizerStrength(strength) ?: run {
+            _localAudioState.value = _localAudioState.value.copy(virtualizerStrength = strength.coerceIn(0, 1000))
+        }
+    }
+
+    fun setSpatialMode(mode: SpatialMode) {
+        service?.setSpatialMode(mode) ?: run {
+            _localAudioState.value = _localAudioState.value.copy(
+                spatialMode = mode,
+                virtualizerStrength = mode.defaultStrength
+            )
+        }
+    }
+
+    fun setLoudnessGain(gainMb: Int) {
+        service?.setLoudnessGain(gainMb) ?: run {
+            _localAudioState.value = _localAudioState.value.copy(loudnessGainMb = gainMb.coerceIn(0, 1000))
+        }
+    }
+
     fun setPresetMode(mode: PresetMode) {
         service?.setPresetMode(mode) ?: run {
             val eq = EQPreset.fromMode(mode)

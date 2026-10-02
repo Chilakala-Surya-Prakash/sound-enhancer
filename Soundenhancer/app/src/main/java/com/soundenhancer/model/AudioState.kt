@@ -16,7 +16,11 @@ data class AudioState(
     val amplitude: Float = 0f,
     val vocalRatio: Float = 0f,
     val activeSessionId: Int = 0,
-    val diagnosticLog: String = ""
+    val diagnosticLog: String = "",
+    val bassBoostStrength: Int = 850,
+    val virtualizerStrength: Int = 750,
+    val loudnessGainMb: Int = 250,
+    val spatialMode: SpatialMode = SpatialMode.HEADPHONES_3D
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -37,6 +41,10 @@ data class AudioState(
             vocalRatio == other.vocalRatio &&
             activeSessionId == other.activeSessionId &&
             diagnosticLog == other.diagnosticLog &&
+            bassBoostStrength == other.bassBoostStrength &&
+            virtualizerStrength == other.virtualizerStrength &&
+            loudnessGainMb == other.loudnessGainMb &&
+            spatialMode == other.spatialMode &&
             spectrumBands.contentEquals(other.spectrumBands)
     }
 
@@ -56,6 +64,10 @@ data class AudioState(
         r = 31 * r + vocalRatio.hashCode()
         r = 31 * r + activeSessionId.hashCode()
         r = 31 * r + diagnosticLog.hashCode()
+        r = 31 * r + bassBoostStrength.hashCode()
+        r = 31 * r + virtualizerStrength.hashCode()
+        r = 31 * r + loudnessGainMb.hashCode()
+        r = 31 * r + spatialMode.hashCode()
         r = 31 * r + spectrumBands.contentHashCode()
         return r
     }

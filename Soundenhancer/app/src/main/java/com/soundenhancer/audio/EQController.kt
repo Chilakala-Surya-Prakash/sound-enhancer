@@ -53,6 +53,29 @@ class EQController {
         }
     }
 
+    fun setBandGain(bandIndex: Int, gainDb: Int) {
+        val eq = equalizer ?: return
+        try {
+            if (bandIndex in 0 until eq.numberOfBands) {
+                val range = eq.bandLevelRange
+                val milliBels = (gainDb * 100).coerceIn(range[0].toInt(), range[1].toInt()).toShort()
+                eq.setBandLevel(bandIndex.toShort(), milliBels)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to set band gain: ${e.message}")
+        }
+    }
+
+    fun getBandLevelRange(): Pair<Short, Short>? {
+        val eq = equalizer ?: return null
+        return try {
+            val range = eq.bandLevelRange
+            Pair(range[0], range[1])
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun getCurrentBands(): List<Pair<Int, Int>> {
         val eq = equalizer ?: return emptyList()
         return try {
