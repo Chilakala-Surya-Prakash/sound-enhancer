@@ -5,12 +5,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.audioalchemy.audio.TestTrackMode
 import com.audioalchemy.model.AudioState
 import com.audioalchemy.model.EQPreset
-import com.audioalchemy.model.InstrumentType
 import com.audioalchemy.model.PresetMode
 import com.audioalchemy.model.SpatialMode
 import com.audioalchemy.service.AudioAlchemyService
@@ -69,6 +70,59 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         _localAudioState.value = AudioState(isListening = false)
     }
 
+    // --- In-App Audio Engine / Test Calibration Methods ---
+    fun playPinkNoise() {
+        if (!audioState.value.isListening) startService()
+        service?.playPinkNoise() ?: run {
+            _localAudioState.value = _localAudioState.value.copy(
+                isLocalPlaying = true,
+                localTrackMode = TestTrackMode.PINK_NOISE,
+                localTrackTitle = "Pink Noise (EQ Calibration Tool)"
+            )
+        }
+    }
+
+    fun playSineSweep() {
+        if (!audioState.value.isListening) startService()
+        service?.playSineSweep() ?: run {
+            _localAudioState.value = _localAudioState.value.copy(
+                isLocalPlaying = true,
+                localTrackMode = TestTrackMode.SINE_SWEEP,
+                localTrackTitle = "Harmonic Sweep (20Hz - 20kHz)"
+            )
+        }
+    }
+
+    fun playUserAudio(uri: Uri, fileName: String) {
+        if (!audioState.value.isListening) startService()
+        service?.playUserAudio(uri, fileName) ?: run {
+            _localAudioState.value = _localAudioState.value.copy(
+                isLocalPlaying = true,
+                localTrackMode = TestTrackMode.USER_FILE,
+                localTrackTitle = fileName
+            )
+        }
+    }
+
+    fun toggleLocalPlayPause() {
+        service?.toggleLocalPlayPause() ?: run {
+            _localAudioState.value = _localAudioState.value.copy(
+                isLocalPlaying = !_localAudioState.value.isLocalPlaying
+            )
+        }
+    }
+
+    fun stopLocalPlayback() {
+        service?.stopLocal() ?: run {
+            _localAudioState.value = _localAudioState.value.copy(
+                isLocalPlaying = false,
+                localTrackMode = TestTrackMode.NONE,
+                localTrackTitle = ""
+            )
+        }
+    }
+
+    // --- DSP Control Methods ---
     fun setEnhancerEnabled(enabled: Boolean) {
         service?.setEnhancerEnabled(enabled) ?: run {
             _localAudioState.value = _localAudioState.value.copy(isEnhancerEnabled = enabled)
@@ -106,7 +160,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         service?.setPresetMode(mode) ?: run {
             val eq = EQPreset.fromMode(mode)
             _localAudioState.value = _localAudioState.value.copy(
-                isAutoMode = (mode == PresetMode.AUTO),
+                isAutoMode = false,
                 activePresetMode = mode,
                 currentEQ = eq
             )
@@ -129,63 +183,6 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
-    }
-
-    fun toggleInstrument(inst: InstrumentType) {
-        service?.toggleSoloInstrument(inst) ?: run {
-            val isCurrentlySolo = _localAudioState.value.soloInstrument == inst
-            if (isCurrentlySolo) {
-                _localAudioState.value = _localAudioState.value.copy(
-                    soloInstrument = null,
-                    selectedInstruments = emptySet(),
-                    isAutoMode = true,
-                    activePresetMode = PresetMode.AUTO,
-                    currentEQ = EQPreset.BALANCED
-                )
-            } else {
-                _localAudioState.value = _localAudioState.value.copy(
-                    soloInstrument = inst,
-                    selectedInstruments = setOf(inst),
-                    isAutoMode = false,
-                    activePresetMode = PresetMode.CUSTOM,
-                    currentEQ = inst.soloEqBands
-                )
-            }
-        }
-    }
-
-    fun setSelectedInstruments(instruments: Set<InstrumentType>) {
-        service?.setSelectedInstruments(instruments) ?: run {
-            if (instruments.isEmpty()) {
-                _localAudioState.value = _localAudioState.value.copy(
-                    isAutoMode = false,
-                    selectedInstruments = emptySet(),
-                    detectedInstrument = InstrumentType.UNKNOWN,
-                    activePresetMode = PresetMode.BALANCED,
-                    currentEQ = EQPreset.BALANCED
-                )
-            } else {
-                val compositeBands = IntArray(9)
-                for (i in 0 until 9) {
-                    compositeBands[i] = instruments.maxOf { inst -> inst.eqBands.toIntArray()[i] }
-                }
-                val compositeEQ = EQPreset(
-                    compositeBands[0], compositeBands[1], compositeBands[2], compositeBands[3],
-                    compositeBands[4], compositeBands[5], compositeBands[6], compositeBands[7], compositeBands[8]
-                )
-                _localAudioState.value = _localAudioState.value.copy(
-                    isAutoMode = false,
-                    selectedInstruments = instruments,
-                    detectedInstrument = instruments.first(),
-                    activePresetMode = PresetMode.CUSTOM,
-                    currentEQ = compositeEQ
-                )
-            }
-        }
-    }
-
-    fun setManualInstrument(inst: InstrumentType) {
-        setSelectedInstruments(setOf(inst))
     }
 
     override fun onCleared() {

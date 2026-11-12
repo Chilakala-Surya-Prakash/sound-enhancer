@@ -2,21 +2,41 @@ package com.audioalchemy.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Background   = Color(0xFF08080F)
-val Surface      = Color(0xFF111120)
-val SurfaceVar   = Color(0xFF191930)
-val Primary      = Color(0xFF7C3AED)
-val PrimaryLight = Color(0xFF9D5CF6)
-val Secondary    = Color(0xFF06B6D4)
-val Accent       = Color(0xFFF59E0B)
-val OnBackground = Color(0xFFF1F0FF)
-val OnSurface    = Color(0xFFCBCAE8)
-val Muted        = Color(0xFF4B4B6B)
+// Cream Wood & Emerald Master Palette (Audiophile Analog Acoustic Studio)
+// Deep roasted walnut & mahogany wood base
+val Background      = Color(0xFF14100E) // Deep roasted walnut chassis
+val Surface         = Color(0xFF1F1815) // Warm dark timber panel
+val SurfaceVar      = Color(0xFF2B211C) // Warm teak / cedar card surface
+val SurfaceLight    = Color(0xFF382C26) // Elevated wood grain highlight
 
-// Spectrum gradient colours (bass → treble)
-val SpecBass     = Color(0xFFEF4444)
-val SpecLowMid   = Color(0xFFF97316)
-val SpecMid      = Color(0xFFEAB308)
-val SpecHighMid  = Color(0xFF22C55E)
-val SpecHigh     = Color(0xFF06B6D4)
-val SpecAir      = Color(0xFF7C3AED)
+// Cream & Parchment Tones (Warm analog dials, text, and meter backgrounds)
+val CreamWhite      = Color(0xFFFBF8F3) // Pure ivory cream
+val CreamParchment  = Color(0xFFEFE6D8) // Warm antique parchment
+val CreamMuted      = Color(0xFFD9CCBA) // Soft weathered linen
+val WoodGold        = Color(0xFFD4A373) // Warm amber brass / honey wood
+val WoodDark        = Color(0xFF4A3728) // Deep walnut accent
+
+// Emerald Jewel Accents (Primary active & illuminated indicators)
+val EmeraldPrimary  = Color(0xFF059669) // Gemstone emerald
+val EmeraldBright   = Color(0xFF10B981) // Luminous emerald glow
+val EmeraldLight    = Color(0xFF34D399) // Soft mint emerald highlight
+val EmeraldDeep     = Color(0xFF064E3B) // Forest emerald shadow
+val EmeraldMuted    = Color(0xFF065F46) // Dark moss emerald
+
+// Semantic aliases mapping to Material theme
+val Primary         = EmeraldBright
+val PrimaryLight    = EmeraldLight
+val Secondary       = WoodGold
+val Accent          = Color(0xFFE09F3E) // Warm burnished brass
+val OnBackground    = CreamWhite
+val OnSurface       = CreamParchment
+val Muted           = Color(0xFF8F8073) // Warm driftwood gray
+
+// Spectrum gradient: Natural organic timbre (Deep Moss -> Gemstone Emerald -> Honey Wood -> Warm Cream)
+val SpecBass        = Color(0xFF047857) // Deep emerald
+val SpecLowMid      = Color(0xFF059669) // Forest emerald
+val SpecMid         = Color(0xFF10B981) // Gemstone emerald
+val SpecHighMid     = Color(0xFF34D399) // Mint emerald
+val SpecHigh        = Color(0xFFD4A373) // Honey wood
+val SpecAir         = Color(0xFFFBF8F3) // Cream white
+

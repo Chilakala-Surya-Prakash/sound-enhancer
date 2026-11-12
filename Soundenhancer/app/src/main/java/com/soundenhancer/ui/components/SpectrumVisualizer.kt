@@ -75,7 +75,7 @@ fun SpectrumVisualizer(
             // Peak dot
             if (bandH > 8f) {
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = CreamWhite.copy(alpha = 0.9f),
                     radius = 2f,
                     center = Offset(x + barWidth / 2, h - bandH - 4f)
                 )
@@ -84,7 +84,7 @@ fun SpectrumVisualizer(
 
         // Baseline
         drawLine(
-            color = Color.White.copy(alpha = 0.08f),
+            color = WoodGold.copy(alpha = 0.15f),
             start = Offset(0f, h),
             end = Offset(w, h),
             strokeWidth = 1f

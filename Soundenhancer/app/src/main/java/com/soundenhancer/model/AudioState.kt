@@ -1,10 +1,12 @@
 package com.audioalchemy.model
 
+import com.audioalchemy.audio.TestTrackMode
+
 data class AudioState(
     val isListening: Boolean = false,
     val isEnhancerEnabled: Boolean = true,
-    val isAutoMode: Boolean = true,
-    val activePresetMode: PresetMode = PresetMode.AUTO,
+    val isAutoMode: Boolean = false,
+    val activePresetMode: PresetMode = PresetMode.BALANCED,
     val detectedInstrument: InstrumentType = InstrumentType.UNKNOWN,
     val activeDetectedInstruments: Set<InstrumentType> = emptySet(),
     val selectedInstruments: Set<InstrumentType> = emptySet(),
@@ -17,10 +19,14 @@ data class AudioState(
     val vocalRatio: Float = 0f,
     val activeSessionId: Int = 0,
     val diagnosticLog: String = "",
-    val bassBoostStrength: Int = 850,
-    val virtualizerStrength: Int = 750,
-    val loudnessGainMb: Int = 250,
-    val spatialMode: SpatialMode = SpatialMode.HEADPHONES_3D
+    val bassBoostStrength: Int = 750,
+    val virtualizerStrength: Int = 600,
+    val loudnessGainMb: Int = 200,
+    val spatialMode: SpatialMode = SpatialMode.HEADPHONES_3D,
+    val localTrackMode: TestTrackMode = TestTrackMode.NONE,
+    val isLocalPlaying: Boolean = false,
+    val localTrackTitle: String = "",
+    val hasDirectDspAttachment: Boolean = false
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -45,6 +51,10 @@ data class AudioState(
             virtualizerStrength == other.virtualizerStrength &&
             loudnessGainMb == other.loudnessGainMb &&
             spatialMode == other.spatialMode &&
+            localTrackMode == other.localTrackMode &&
+            isLocalPlaying == other.isLocalPlaying &&
+            localTrackTitle == other.localTrackTitle &&
+            hasDirectDspAttachment == other.hasDirectDspAttachment &&
             spectrumBands.contentEquals(other.spectrumBands)
     }
 
@@ -68,6 +78,10 @@ data class AudioState(
         r = 31 * r + virtualizerStrength.hashCode()
         r = 31 * r + loudnessGainMb.hashCode()
         r = 31 * r + spatialMode.hashCode()
+        r = 31 * r + localTrackMode.hashCode()
+        r = 31 * r + isLocalPlaying.hashCode()
+        r = 31 * r + localTrackTitle.hashCode()
+        r = 31 * r + hasDirectDspAttachment.hashCode()
         r = 31 * r + spectrumBands.contentHashCode()
         return r
     }

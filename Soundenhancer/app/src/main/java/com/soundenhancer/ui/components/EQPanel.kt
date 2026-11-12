@@ -37,7 +37,7 @@ fun EQPanel(
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
             .background(SurfaceVar)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            .border(1.dp, WoodGold.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
             .padding(vertical = 18.dp, horizontal = 8.dp)
     ) {
         Column {
@@ -94,10 +94,10 @@ private fun EQBandColumn(
     )
 
     val color = when {
-        gainDb > 3  -> Primary
-        gainDb > 0  -> Secondary
-        gainDb < -3 -> Color(0xFFEF4444)
-        gainDb < 0  -> Color(0xFFF97316)
+        gainDb > 3  -> EmeraldBright
+        gainDb > 0  -> EmeraldLight
+        gainDb < -3 -> Color(0xFFC07040) // Warm cedar rust cut
+        gainDb < 0  -> WoodGold          // Amber brass gentle cut
         else        -> Muted
     }
 

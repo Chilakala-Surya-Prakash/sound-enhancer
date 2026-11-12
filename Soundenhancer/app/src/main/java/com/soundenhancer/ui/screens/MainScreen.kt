@@ -5,7 +5,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,8 +15,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.audioalchemy.audio.TestTrackMode
 import com.audioalchemy.ui.components.DSPControlPanel
 import com.audioalchemy.ui.components.EQPanel
 import com.audioalchemy.ui.components.PresetGrid
@@ -63,6 +64,17 @@ fun MainScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         vm.startService()
+    }
+
+    // Audio file picker launcher for local playback
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val fileName = queryFileName(context, uri) ?: "Selected Track"
+            vm.playUserAudio(uri, fileName)
+            Toast.makeText(context, "Loaded: $fileName", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun handlePowerToggle() {
@@ -95,13 +107,13 @@ fun MainScreen(
         } else {
             """
             [SOUND ENHANCER STUDIO DIAGNOSTIC REPORT]
-            Engine Status: ${if (state.isListening) "Listening (Active)" else "Idle"}
-            Studio Enhancer: ${if (state.isEnhancerEnabled) "ON" else "OFF"}
-            Hardware DSP: BassBoost ${state.bassBoostStrength / 10}% | Virtualizer ${state.virtualizerStrength / 10}% (${state.spatialMode.displayName}) | Loudness +${"%.1f".format(state.loudnessGainMb / 100.0)}dB
-            Preset Mode: ${state.activePresetMode.displayName}
-            Dominant Frequency: ${state.dominantFrequencyHz.toInt()}Hz
+            Engine Status: ${if (state.isListening) "Active" else "Standby"}
+            Hardware DSP Attachment: ${if (state.hasDirectDspAttachment) "Guaranteed Direct Session #${state.activeSessionId}" else "Global Session #0"}
+            Studio Enhancer: ${if (state.isEnhancerEnabled) "ONLINE" else "BYPASS"}
+            DSP Levels: Sub-Bass ${state.bassBoostStrength / 10}% | Virtualizer ${state.virtualizerStrength / 10}% (${state.spatialMode.displayName}) | Loudness +${"%.1f".format(state.loudnessGainMb / 100.0)}dB
+            Target Preset: ${state.activePresetMode.displayName}
             Peak Amplitude: ${"%.3f".format(state.amplitude)}
-            Vocal Ratio: ${"%.1f".format(state.vocalRatio * 100)}%
+            Dominant Frequency: ${state.dominantFrequencyHz.toInt()}Hz
             EQ Band Levels: ${state.currentEQ.toIntArray().joinToString(", ") { "${it}dB" }}
             """.trimIndent()
         }
@@ -115,17 +127,18 @@ fun MainScreen(
             .fillMaxSize()
             .background(Background)
     ) {
+        // Subtle ambient emerald radial glow when engine is running
         if (state.isListening) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(300.dp)
                     .align(Alignment.TopCenter)
                     .graphicsLayer { alpha = 0.99f }
                     .background(
                         Brush.radialGradient(
                             listOf(
-                                state.detectedInstrument.color.copy(alpha = 0.15f),
+                                EmeraldPrimary.copy(alpha = 0.12f),
                                 Color.Transparent
                             )
                         )
@@ -137,12 +150,12 @@ fun MainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 24.dp),
+                .padding(horizontal = 18.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // Top Header with Separate Audio Enhancer Button
+            // Header Section
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -153,23 +166,39 @@ fun MainScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Sound Enhancer",
+                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                                color = CreamWhite
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(EmeraldDeep.copy(alpha = 0.6f))
+                                    .border(1.dp, EmeraldBright.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    "DSP V2",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldLight
+                                )
+                            }
+                        }
                         Text(
-                            "Music Enhanced",
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                            color = OnBackground
-                        )
-                        Text(
-                            "Studio Audio Engine",
+                            "Studio Acoustic Hardware Engine",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Muted
+                            color = CreamMuted
                         )
                     }
 
                     // Power Button
                     val pulseAnim = rememberInfiniteTransition(label = "pulse")
                     val pulseScale by pulseAnim.animateFloat(
-                        initialValue = 1f, targetValue = 1.1f,
-                        animationSpec = infiniteRepeatable(tween(1000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                        initialValue = 1f, targetValue = 1.08f,
+                        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
                         label = "pulseScale"
                     )
 
@@ -180,17 +209,17 @@ fun MainScreen(
                                     .size(56.dp)
                                     .scale(pulseScale)
                                     .clip(CircleShape)
-                                    .background(Primary.copy(alpha = 0.25f))
+                                    .background(EmeraldBright.copy(alpha = 0.22f))
                             )
                         }
                         FloatingActionButton(
                             onClick = { handlePowerToggle() },
                             modifier = Modifier.size(46.dp),
-                            containerColor = if (state.isListening) Primary else SurfaceVar,
-                            contentColor = if (state.isListening) Color.White else Muted,
+                            containerColor = if (state.isListening) EmeraldBright else SurfaceVar,
+                            contentColor = if (state.isListening) Color(0xFF063323) else Muted,
                             shape = CircleShape,
                             elevation = FloatingActionButtonDefaults.elevation(
-                                defaultElevation = if (state.isListening) 8.dp else 2.dp
+                                defaultElevation = if (state.isListening) 6.dp else 2.dp
                             )
                         ) {
                             Icon(
@@ -202,43 +231,51 @@ fun MainScreen(
                     }
                 }
 
-                // Dedicated Top Audio Enhancer Master Switch
+                // Master Audio Enhancer Switch
                 Surface(
                     onClick = { vm.setEnhancerEnabled(!state.isEnhancerEnabled) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (state.isEnhancerEnabled) Primary.copy(alpha = 0.18f) else SurfaceVar,
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (state.isEnhancerEnabled) SurfaceVar else Surface,
                     border = BorderStroke(
                         width = 1.5.dp,
-                        color = if (state.isEnhancerEnabled) Primary else Color.White.copy(alpha = 0.08f)
+                        color = if (state.isEnhancerEnabled) EmeraldBright else WoodGold.copy(alpha = 0.15f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                Icons.Rounded.AutoAwesome,
-                                contentDescription = "Audio Enhancer",
-                                tint = if (state.isEnhancerEnabled) Primary else Muted,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(if (state.isEnhancerEnabled) EmeraldBright.copy(alpha = 0.2f) else SurfaceLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.AutoAwesome,
+                                    contentDescription = "Audio Enhancer",
+                                    tint = if (state.isEnhancerEnabled) EmeraldBright else Muted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                             Column {
                                 Text(
                                     "Audio Enhancer",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    color = if (state.isEnhancerEnabled) OnBackground else Muted
+                                    color = if (state.isEnhancerEnabled) CreamWhite else Muted
                                 )
                                 Text(
-                                    if (state.isEnhancerEnabled) "Studio Dynamics • ISO 226 Active" else "Tap to enable studio clarity",
-                                    fontSize = 11.sp,
-                                    color = Muted
+                                    if (state.isEnhancerEnabled) "Hardware DSP Online • Headroom Guard Active" else "Tap to engage 3D stage and sub-bass",
+                                    fontSize = 11.5.sp,
+                                    color = if (state.isEnhancerEnabled) EmeraldLight else Muted
                                 )
                             }
                         }
@@ -247,28 +284,218 @@ fun MainScreen(
                             checked = state.isEnhancerEnabled,
                             onCheckedChange = { vm.setEnhancerEnabled(it) },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Primary,
-                                checkedTrackColor = Primary.copy(alpha = 0.4f)
+                                checkedThumbColor = EmeraldBright,
+                                checkedTrackColor = EmeraldDeep.copy(alpha = 0.8f),
+                                uncheckedThumbColor = Muted,
+                                uncheckedTrackColor = SurfaceLight
                             )
                         )
                     }
                 }
             }
 
-            // Spectrum Visualizer
+            // In-App Audio Engine & Calibration Deck
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = SurfaceVar,
+                border = BorderStroke(1.dp, WoodGold.copy(alpha = 0.22f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(WoodGold.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.GraphicEq,
+                                    contentDescription = "Calibration Engine",
+                                    tint = WoodGold,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    "Built-in Audio & Calibration Deck",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = CreamWhite
+                                )
+                                Text(
+                                    "Direct Session DSP • Immediate Audible Proof",
+                                    fontSize = 11.sp,
+                                    color = CreamMuted
+                                )
+                            }
+                        }
+
+                        // Play/Pause button for local track
+                        if (state.localTrackMode != TestTrackMode.NONE) {
+                            FilledIconButton(
+                                onClick = { vm.toggleLocalPlayPause() },
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = if (state.isLocalPlaying) EmeraldBright else WoodGold
+                                ),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    if (state.isLocalPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = "Play/Pause",
+                                    tint = Color(0xFF063323),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Current track readout
+                    if (state.localTrackMode != TestTrackMode.NONE) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Surface)
+                                .border(1.dp, EmeraldBright.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(if (state.isLocalPlaying) EmeraldBright else Muted)
+                                    )
+                                    Text(
+                                        text = state.localTrackTitle,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = CreamWhite,
+                                        maxLines = 1
+                                    )
+                                }
+                                Text(
+                                    text = "DSP Active",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldBright
+                                )
+                            }
+                        }
+                    }
+
+                    // Test track source selection chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Pink Noise Chip
+                        val isPinkSelected = (state.localTrackMode == TestTrackMode.PINK_NOISE)
+                        FilterChip(
+                            selected = isPinkSelected,
+                            onClick = { vm.playPinkNoise() },
+                            label = { Text("Pink Noise", fontSize = 11.sp, fontWeight = if (isPinkSelected) FontWeight.Bold else FontWeight.Medium) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.Grain,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (isPinkSelected) EmeraldBright else WoodGold
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldDeep.copy(alpha = 0.6f),
+                                selectedLabelColor = EmeraldLight
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isPinkSelected,
+                                borderColor = if (isPinkSelected) EmeraldBright else WoodGold.copy(alpha = 0.15f)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // Sine Sweep Chip
+                        val isSweepSelected = (state.localTrackMode == TestTrackMode.SINE_SWEEP)
+                        FilterChip(
+                            selected = isSweepSelected,
+                            onClick = { vm.playSineSweep() },
+                            label = { Text("Sine Sweep", fontSize = 11.sp, fontWeight = if (isSweepSelected) FontWeight.Bold else FontWeight.Medium) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.Waves,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (isSweepSelected) EmeraldBright else WoodGold
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldDeep.copy(alpha = 0.6f),
+                                selectedLabelColor = EmeraldLight
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isSweepSelected,
+                                borderColor = if (isSweepSelected) EmeraldBright else WoodGold.copy(alpha = 0.15f)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // Open User Audio File Chip
+                        val isUserFileSelected = (state.localTrackMode == TestTrackMode.USER_FILE)
+                        FilterChip(
+                            selected = isUserFileSelected,
+                            onClick = { filePickerLauncher.launch("audio/*") },
+                            label = { Text("Load File", fontSize = 11.sp, fontWeight = if (isUserFileSelected) FontWeight.Bold else FontWeight.Medium) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (isUserFileSelected) EmeraldBright else WoodGold
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldDeep.copy(alpha = 0.6f),
+                                selectedLabelColor = EmeraldLight
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isUserFileSelected,
+                                borderColor = if (isUserFileSelected) EmeraldBright else WoodGold.copy(alpha = 0.15f)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            // Real-Time Spectrum Visualizer
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(150.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(Surface)
-                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                    .border(1.dp, WoodGold.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
                     .padding(12.dp)
             ) {
-                if (state.isListening && state.amplitude > 0.01f) {
+                if (state.isListening && state.amplitude > 0.005f) {
                     SpectrumVisualizer(
                         bands = state.spectrumBands,
-                        peakColor = state.detectedInstrument.color
+                        peakColor = EmeraldBright
                     )
                 } else {
                     Column(
@@ -276,11 +503,11 @@ fun MainScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Rounded.GraphicEq, null, tint = Muted, modifier = Modifier.size(36.dp))
+                        Icon(Icons.Rounded.GraphicEq, null, tint = WoodGold.copy(alpha = 0.4f), modifier = Modifier.size(36.dp))
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (state.isListening) "Play music in Amazon Music, Spotify, etc..." else "Engine Inactive",
-                            color = Muted,
+                            if (state.isListening) "Tap Pink Noise, Sine Sweep, or play music..." else "DSP Engine Standby",
+                            color = CreamMuted,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -323,7 +550,7 @@ fun MainScreen(
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = SurfaceVar,
-                border = BorderStroke(1.dp, if (isDiagExpanded) Primary.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.08f)),
+                border = BorderStroke(1.dp, if (isDiagExpanded) EmeraldBright.copy(alpha = 0.5f) else WoodGold.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -343,13 +570,13 @@ fun MainScreen(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Primary.copy(alpha = 0.15f)),
+                                    .background(EmeraldDeep.copy(alpha = 0.5f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     Icons.Rounded.BugReport,
                                     contentDescription = null,
-                                    tint = Primary,
+                                    tint = EmeraldBright,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -357,14 +584,15 @@ fun MainScreen(
                                 Text(
                                     "Audio Diagnostics & Telemetry",
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = OnBackground
+                                    color = CreamWhite
                                 )
                                 Text(
-                                    if (state.isListening && state.amplitude > 0.01f) "Real-time DSP stream active"
+                                    if (state.hasDirectDspAttachment) "Direct DSP active • Session #${state.activeSessionId}"
+                                    else if (state.isListening && state.amplitude > 0.01f) "Real-time DSP stream active"
                                     else if (state.isListening) "DSP listening • Awaiting audio"
                                     else "Engine Standby",
                                     fontSize = 11.sp,
-                                    color = if (state.isListening && state.amplitude > 0.01f) SpecHighMid else Muted
+                                    color = if (state.isListening) EmeraldLight else Muted
                                 )
                             }
                         }
@@ -373,9 +601,8 @@ fun MainScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            // Live Status Badge
-                            val statusBg = if (state.isListening && state.amplitude > 0.01f) Color(0xFF10B981)
-                                           else if (state.isListening) Color(0xFFF59E0B)
+                            val statusBg = if (state.hasDirectDspAttachment || (state.isListening && state.amplitude > 0.01f)) EmeraldBright
+                                           else if (state.isListening) WoodGold
                                            else Color(0xFF6B7280)
                             Box(
                                 modifier = Modifier
@@ -384,7 +611,7 @@ fun MainScreen(
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    text = if (state.isListening && state.amplitude > 0.01f) "LIVE"
+                                    text = if (state.hasDirectDspAttachment || (state.isListening && state.amplitude > 0.01f)) "ACTIVE"
                                            else if (state.isListening) "WAITING"
                                            else "IDLE",
                                     fontSize = 10.sp,
@@ -416,6 +643,7 @@ fun MainScreen(
                         TelemetryChip(
                             title = "SESSION",
                             value = sessionText,
+                            valueColor = if (state.activeSessionId != 0) EmeraldBright else CreamWhite,
                             modifier = Modifier.weight(1f)
                         )
 
@@ -433,8 +661,8 @@ fun MainScreen(
 
                         TelemetryChip(
                             title = "PRESET",
-                            value = state.activePresetMode.displayName.take(6),
-                            valueColor = Primary,
+                            value = state.activePresetMode.displayName.take(7),
+                            valueColor = EmeraldBright,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -447,14 +675,14 @@ fun MainScreen(
                         TelemetryChip(
                             title = "SUB-BASS",
                             value = "${(state.bassBoostStrength / 10)}%",
-                            valueColor = Color(0xFFEF4444),
+                            valueColor = EmeraldBright,
                             modifier = Modifier.weight(1f)
                         )
 
                         TelemetryChip(
                             title = "3D STAGE",
                             value = "${(state.virtualizerStrength / 10)}%",
-                            valueColor = Secondary,
+                            valueColor = WoodGold,
                             modifier = Modifier.weight(1f)
                         )
 
@@ -467,8 +695,8 @@ fun MainScreen(
 
                         TelemetryChip(
                             title = "DSP ENGINE",
-                            value = if (state.isEnhancerEnabled) "ONLINE" else "STANDBY",
-                            valueColor = if (state.isEnhancerEnabled) Color(0xFF10B981) else Muted,
+                            value = if (state.isEnhancerEnabled) "ONLINE" else "BYPASS",
+                            valueColor = if (state.isEnhancerEnabled) EmeraldBright else Muted,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -487,22 +715,22 @@ fun MainScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF0A0C10))
-                                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+                                    .background(Color(0xFF0F0B09))
+                                    .border(1.dp, WoodGold.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
                                     .padding(14.dp)
                             ) {
                                 Text(
-                                    text = if (state.diagnosticLog.isNotEmpty()) state.diagnosticLog else "Awaiting live audio telemetry...\nPlay a track in Spotify, YouTube Music, Apple Music, or Poweramp to stream hardware DSP metrics.",
+                                    text = if (state.diagnosticLog.isNotEmpty()) state.diagnosticLog else "Awaiting live audio telemetry...\nTap Pink Noise, Sine Sweep, or play in Spotify/YouTube Music to stream hardware DSP metrics.",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.5.sp,
-                                    color = Color(0xFF34D399),
+                                    color = EmeraldLight,
                                     lineHeight = 17.sp
                                 )
                             }
 
                             Button(
                                 onClick = { copyDiagnosticLog() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldBright, contentColor = Color(0xFF063323)),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -516,6 +744,24 @@ fun MainScreen(
             }
         }
     }
+}
+
+private fun queryFileName(context: Context, uri: Uri): String? {
+    var name: String? = null
+    try {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index != -1) {
+                    name = it.getString(index)
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // Fallback to URI path
+    }
+    return name ?: uri.lastPathSegment
 }
 
 @Composable

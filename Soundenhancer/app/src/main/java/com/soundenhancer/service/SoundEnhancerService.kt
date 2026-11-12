@@ -12,18 +12,20 @@ import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import android.media.audiofx.Visualizer
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.audioalchemy.MainActivity
-import com.audioalchemy.audio.FFTResult
-import com.audioalchemy.audio.InstrumentDetector
+import com.audioalchemy.audio.LocalAudioEngine
+import com.audioalchemy.audio.TestTrackMode
 import com.audioalchemy.model.AudioState
 import com.audioalchemy.model.EQPreset
-import com.audioalchemy.model.InstrumentType
 import com.audioalchemy.model.PresetMode
 import com.audioalchemy.model.SpatialMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,11 +34,11 @@ import kotlinx.coroutines.flow.StateFlow
 class AudioAlchemyService : Service() {
 
     private val tag = "AudioAlchemyService"
-    private val diagTag = "MusicEnhancedDiagnostic"
-    private val channelId = "musicenhanced_channel"
+    private val diagTag = "SoundEnhancerDiagnostic"
+    private val channelId = "soundenhancer_channel"
     private val notifId = 1
 
-    // Hardware DSP effect collections per session ID (Session 0 + active media player sessions)
+    // Hardware DSP effect collections per session ID (Session 0 + local audio + external player sessions)
     private val equalizers = mutableMapOf<Int, Equalizer>()
     private val virtualizers = mutableMapOf<Int, Virtualizer>()
     private val bassBoosts = mutableMapOf<Int, BassBoost>()
@@ -44,14 +46,38 @@ class AudioAlchemyService : Service() {
     private val activeSessions = mutableSetOf<Int>()
 
     private var visualizer: Visualizer? = null
-    private val instrumentDetector = InstrumentDetector()
-
     private val _audioState = MutableStateFlow(AudioState())
     val audioState: StateFlow<AudioState> = _audioState
 
     private var lastDiagnosticTimeMs = 0L
     private var isReceiverRegistered = false
     private var lastMediaPackage: String = "None"
+
+    // Main thread handler for debounced hardware binder transactions (prevents IPC audio glitches)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingEqRunnable: Runnable? = null
+    private var pendingDspRunnable: Runnable? = null
+
+    // In-app high-fidelity audio engine (100% deterministic local playback and reference calibration)
+    private val localAudioEngine = LocalAudioEngine(
+        onSessionActive = { localSessionId ->
+            Log.i(tag, "Local Audio Engine activated on session $localSessionId")
+            attachSessionEffects(localSessionId)
+            attachVisualizer(localSessionId)
+            _audioState.value = _audioState.value.copy(
+                activeSessionId = localSessionId,
+                hasDirectDspAttachment = true,
+                isListening = true
+            )
+        },
+        onStateChanged = { isPlaying, mode, trackName ->
+            _audioState.value = _audioState.value.copy(
+                isLocalPlaying = isPlaying,
+                localTrackMode = mode,
+                localTrackTitle = trackName
+            )
+        }
+    )
 
     // Intercept media session broadcasts from Spotify, YouTube Music, Apple Music, Poweramp, etc.
     private val mediaSessionReceiver = object : BroadcastReceiver() {
@@ -63,19 +89,26 @@ class AudioAlchemyService : Service() {
             if (sessionId != 0) {
                 when (action) {
                     AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION -> {
-                        Log.i(tag, "Media session opened by $pkg (Session ID: $sessionId). Attaching Studio DSP...")
+                        Log.i(tag, "External media session opened by $pkg (Session ID: $sessionId). Attaching Studio DSP...")
                         lastMediaPackage = pkg
                         attachSessionEffects(sessionId)
-                        _audioState.value = _audioState.value.copy(activeSessionId = sessionId)
+                        attachVisualizer(sessionId)
+                        _audioState.value = _audioState.value.copy(
+                            activeSessionId = sessionId,
+                            hasDirectDspAttachment = true
+                        )
                     }
                     AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {
-                        Log.i(tag, "Media session closed by $pkg (Session ID: $sessionId). Releasing session effects...")
+                        Log.i(tag, "External media session closed by $pkg (Session ID: $sessionId). Releasing session effects...")
                         if (lastMediaPackage == pkg) {
                             lastMediaPackage = "None"
                         }
                         detachSessionEffects(sessionId)
                         if (_audioState.value.activeSessionId == sessionId) {
-                            _audioState.value = _audioState.value.copy(activeSessionId = 0)
+                            _audioState.value = _audioState.value.copy(
+                                activeSessionId = 0,
+                                hasDirectDspAttachment = false
+                            )
                         }
                     }
                 }
@@ -97,7 +130,6 @@ class AudioAlchemyService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) {
-            // Service was recreated by Android OS after memory pressure: immediately ensure foreground status
             startListening()
             return START_STICKY
         }
@@ -110,7 +142,7 @@ class AudioAlchemyService : Service() {
     }
 
     fun startListening() {
-        val notif = buildNotification("Music Enhanced: Studio DSP Active")
+        val notif = buildNotification("Sound Enhancer: Studio DSP Active")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(
                 this,
@@ -122,66 +154,77 @@ class AudioAlchemyService : Service() {
             startForeground(notifId, notif)
         }
         attachSessionEffects(0)
+        attachVisualizer(0)
         _audioState.value = _audioState.value.copy(
             isListening = true,
             diagnosticLog = """
                 [SOUND ENHANCER STUDIO DIAGNOSTIC]
                 Engine Status: ACTIVE (Global Session 0 Attached)
-                Studio Enhancer: ${if (_audioState.value.isEnhancerEnabled) "ON (3D Spatializer + SubBass Boost + Loudness)" else "OFF"}
-                Media App: $lastMediaPackage
-                Awaiting active audio stream from media player...
+                Studio Enhancer: ${if (_audioState.value.isEnhancerEnabled) "ONLINE (3D Spatializer + Sub-Bass Boost + Loudness)" else "BYPASS"}
+                Active Source: ${if (_audioState.value.isLocalPlaying) _audioState.value.localTrackTitle else "Listening for active audio streams..."}
             """.trimIndent()
         )
         Log.d(tag, "Studio audio session attached (Session 0)")
     }
 
     fun stopListening() {
+        localAudioEngine.stopAll()
         releaseAllEffects()
         _audioState.value = AudioState(
             isListening = false,
             isEnhancerEnabled = _audioState.value.isEnhancerEnabled,
             diagnosticLog = """
                 [SOUND ENHANCER STUDIO DIAGNOSTIC]
-                Engine Status: INACTIVE (Hardware DSP Released)
-                Tap the power button to attach Studio DSP.
+                Engine Status: STANDBY (Hardware DSP Released)
+                Tap the power button or select a calibration test track to attach Studio DSP.
             """.trimIndent()
         )
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
+    // --- Local Audio Engine Controls ---
+    fun playPinkNoise() {
+        localAudioEngine.playPinkNoise()
+    }
+
+    fun playSineSweep() {
+        localAudioEngine.playSineSweep()
+    }
+
+    fun playUserAudio(uri: Uri, fileName: String) {
+        localAudioEngine.playUserAudio(applicationContext, uri, fileName)
+    }
+
+    fun toggleLocalPlayPause() {
+        localAudioEngine.togglePlayPause()
+    }
+
+    fun pauseLocal() {
+        localAudioEngine.pause()
+    }
+
+    fun stopLocal() {
+        localAudioEngine.stopAll()
+    }
+
+    // --- Master DSP Controls ---
     fun setEnhancerEnabled(enabled: Boolean) {
         _audioState.value = _audioState.value.copy(isEnhancerEnabled = enabled)
-        applyStudioEnhancements()
-        applyGlobalEQ(_audioState.value.currentEQ)
+        scheduleApplyStudioEnhancements()
+        scheduleApplyGlobalEQ(_audioState.value.currentEQ)
     }
 
     fun setBassBoostStrength(strength: Int) {
         val clamped = strength.coerceIn(0, 1000)
         _audioState.value = _audioState.value.copy(bassBoostStrength = clamped)
-        bassBoosts.values.forEach { bb ->
-            try {
-                if (bb.strengthSupported) {
-                    bb.setStrength(if (_audioState.value.isEnhancerEnabled) clamped.toShort() else 0.toShort())
-                }
-            } catch (e: Exception) {
-                Log.w(tag, "Failed to set BassBoost strength: ${e.message}")
-            }
-        }
+        scheduleApplyStudioEnhancements()
     }
 
     fun setVirtualizerStrength(strength: Int) {
         val clamped = strength.coerceIn(0, 1000)
         _audioState.value = _audioState.value.copy(virtualizerStrength = clamped)
-        virtualizers.values.forEach { virt ->
-            try {
-                if (virt.strengthSupported) {
-                    virt.setStrength(if (_audioState.value.isEnhancerEnabled) clamped.toShort() else 0.toShort())
-                }
-            } catch (e: Exception) {
-                Log.w(tag, "Failed to set Virtualizer strength: ${e.message}")
-            }
-        }
+        scheduleApplyStudioEnhancements()
     }
 
     fun setSpatialMode(mode: SpatialMode) {
@@ -192,11 +235,120 @@ class AudioAlchemyService : Service() {
     fun setLoudnessGain(gainMb: Int) {
         val clamped = gainMb.coerceIn(0, 1000)
         _audioState.value = _audioState.value.copy(loudnessGainMb = clamped)
+        scheduleApplyStudioEnhancements()
+    }
+
+    fun setPresetMode(mode: PresetMode) {
+        val eq = EQPreset.fromMode(mode)
+        _audioState.value = _audioState.value.copy(
+            isAutoMode = false,
+            activePresetMode = mode,
+            currentEQ = eq
+        )
+        scheduleApplyGlobalEQ(eq)
+    }
+
+    fun setCustomEQBand(index: Int, gainDb: Int) {
+        val currentEQ = _audioState.value.currentEQ
+        val arr = currentEQ.toIntArray()
+        if (index in arr.indices) {
+            arr[index] = gainDb.coerceIn(-12, 12)
+            val updatedEQ = EQPreset(
+                b63Hz = arr[0], b125Hz = arr[1], b250Hz = arr[2], b500Hz = arr[3],
+                b1kHz = arr[4], b2kHz = arr[5], b4kHz = arr[6], b8kHz = arr[7], b16kHz = arr[8]
+            )
+            _audioState.value = _audioState.value.copy(
+                isAutoMode = false,
+                activePresetMode = PresetMode.CUSTOM,
+                currentEQ = updatedEQ
+            )
+            scheduleApplyGlobalEQ(updatedEQ)
+        }
+    }
+
+    // --- Debounced Hardware Binder Application ---
+    private fun scheduleApplyStudioEnhancements() {
+        pendingDspRunnable?.let { mainHandler.removeCallbacks(it) }
+        val r = Runnable { applyStudioEnhancementsDirect() }
+        pendingDspRunnable = r
+        mainHandler.postDelayed(r, 20L)
+    }
+
+    private fun scheduleApplyGlobalEQ(preset: EQPreset) {
+        pendingEqRunnable?.let { mainHandler.removeCallbacks(it) }
+        val r = Runnable { applyGlobalEQDirect(preset) }
+        pendingEqRunnable = r
+        mainHandler.postDelayed(r, 25L)
+    }
+
+    private fun applyStudioEnhancementsDirect() {
+        val state = _audioState.value
+        val isEnhancer = state.isEnhancerEnabled
+
+        virtualizers.values.forEach { virt ->
+            try {
+                if (virt.strengthSupported) {
+                    virt.setStrength(if (isEnhancer) state.virtualizerStrength.toShort() else 0.toShort())
+                }
+                virt.enabled = isEnhancer
+            } catch (e: Exception) {
+                Log.w(tag, "Virtualizer set error: ${e.message}")
+            }
+        }
+        bassBoosts.values.forEach { bb ->
+            try {
+                if (bb.strengthSupported) {
+                    bb.setStrength(if (isEnhancer) state.bassBoostStrength.toShort() else 0.toShort())
+                }
+                bb.enabled = isEnhancer
+            } catch (e: Exception) {
+                Log.w(tag, "BassBoost set error: ${e.message}")
+            }
+        }
         loudnessEnhancers.values.forEach { le ->
             try {
-                le.setTargetGain(if (_audioState.value.isEnhancerEnabled) clamped else 0)
+                le.setTargetGain(if (isEnhancer) state.loudnessGainMb else 0)
+                le.enabled = isEnhancer
             } catch (e: Exception) {
-                Log.w(tag, "Failed to set LoudnessEnhancer target gain: ${e.message}")
+                Log.w(tag, "LoudnessEnhancer set error: ${e.message}")
+            }
+        }
+    }
+
+    private fun applyGlobalEQDirect(preset: EQPreset) {
+        val isEnhancer = _audioState.value.isEnhancerEnabled
+        val targetFreqs = floatArrayOf(63f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f)
+        val gains = preset.toIntArray()
+
+        // Digital Headroom Anti-Clipping Guard:
+        // Automatically attenuate if heavy boost is applied to prevent digital square-wave clipping
+        val maxBoost = maxOf(0, gains.maxOrNull() ?: 0)
+        val headroomOffsetDb = if (maxBoost > 4) -((maxBoost - 4) * 0.4f).toInt() else 0
+
+        equalizers.values.forEach { eq ->
+            try {
+                val n = eq.numberOfBands.toInt()
+                if (n <= 0) return@forEach
+                val range = eq.bandLevelRange
+
+                for (band in 0 until n) {
+                    val centerHz = eq.getCenterFreq(band.toShort()) / 1000f
+                    var closestIdx = 0
+                    var minDiff = Float.MAX_VALUE
+                    for (i in targetFreqs.indices) {
+                        val diff = kotlin.math.abs(targetFreqs[i] - centerHz)
+                        if (diff < minDiff) {
+                            minDiff = diff
+                            closestIdx = i
+                        }
+                    }
+                    val totalGainDb = gains[closestIdx] + (if (isEnhancer) 1 else 0) + headroomOffsetDb
+                    val rawMilliBels = totalGainDb * 100
+                    val milliBels = rawMilliBels.coerceIn(range[0].toInt(), range[1].toInt()).toShort()
+                    eq.setBandLevel(band.toShort(), milliBels)
+                }
+            } catch (e: Exception) {
+                Log.w(tag, "EQ apply failed: ${e.message}")
             }
         }
     }
@@ -234,7 +386,7 @@ class AudioAlchemyService : Service() {
     private fun attachSessionEffects(sessionId: Int) {
         activeSessions.add(sessionId)
 
-        // 1. Equalizer (Hardware 9-band mapping)
+        // 1. Equalizer
         if (!equalizers.containsKey(sessionId)) {
             try {
                 val eq = Equalizer(0, sessionId).apply { enabled = true }
@@ -245,7 +397,7 @@ class AudioAlchemyService : Service() {
             }
         }
 
-        // 2. Virtualizer (Binaural 3D Spatializer: moves sound out of the head for an intimate room soundstage)
+        // 2. Virtualizer
         if (!virtualizers.containsKey(sessionId)) {
             try {
                 val virt = Virtualizer(0, sessionId).apply {
@@ -261,7 +413,7 @@ class AudioAlchemyService : Service() {
             }
         }
 
-        // 3. BassBoost (Tight sub-harmonic punch without the boomy 250Hz resonance)
+        // 3. BassBoost
         if (!bassBoosts.containsKey(sessionId)) {
             try {
                 val bb = BassBoost(0, sessionId).apply {
@@ -277,7 +429,7 @@ class AudioAlchemyService : Service() {
             }
         }
 
-        // 4. LoudnessEnhancer (Studio dynamics and presence on API 19+)
+        // 4. LoudnessEnhancer
         if (!loudnessEnhancers.containsKey(sessionId)) {
             try {
                 val le = LoudnessEnhancer(sessionId).apply {
@@ -291,34 +443,36 @@ class AudioAlchemyService : Service() {
             }
         }
 
-        // 5. Visualizer (Spectrum and FFT analysis)
-        if (visualizer == null) {
-            try {
-                val v = Visualizer(sessionId).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[1]
-                    scalingMode = Visualizer.SCALING_MODE_NORMALIZED
-                    measurementMode = Visualizer.MEASUREMENT_MODE_NONE
-                    setDataCaptureListener(
-                        object : Visualizer.OnDataCaptureListener {
-                            override fun onWaveFormDataCapture(v: Visualizer, wf: ByteArray, sr: Int) {}
-                            override fun onFftDataCapture(v: Visualizer, fft: ByteArray, sr: Int) {
-                                processFft(fft, sr)
-                            }
-                        },
-                        Visualizer.getMaxCaptureRate() / 2,
-                        false, true
-                    )
-                    enabled = true
-                }
-                visualizer = v
-                Log.d(tag, "Visualizer attached to session $sessionId")
-            } catch (e: Exception) {
-                Log.w(tag, "Visualizer init for session $sessionId failed: ${e.message}")
-            }
-        }
+        applyGlobalEQDirect(_audioState.value.currentEQ)
+    }
 
-        // Immediately apply current EQ across all active sessions
-        applyGlobalEQ(_audioState.value.currentEQ)
+    private fun attachVisualizer(sessionId: Int) {
+        try {
+            visualizer?.apply { enabled = false; release() }
+        } catch (e: Exception) {}
+
+        try {
+            val v = Visualizer(sessionId).apply {
+                captureSize = Visualizer.getCaptureSizeRange()[1]
+                scalingMode = Visualizer.SCALING_MODE_NORMALIZED
+                measurementMode = Visualizer.MEASUREMENT_MODE_NONE
+                setDataCaptureListener(
+                    object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(v: Visualizer, wf: ByteArray, sr: Int) {}
+                        override fun onFftDataCapture(v: Visualizer, fft: ByteArray, sr: Int) {
+                            processFft(fft, sr)
+                        }
+                    },
+                    Visualizer.getMaxCaptureRate() / 2,
+                    false, true
+                )
+                enabled = true
+            }
+            visualizer = v
+            Log.d(tag, "Visualizer attached to session $sessionId")
+        } catch (e: Exception) {
+            Log.w(tag, "Visualizer init for session $sessionId failed: ${e.message}")
+        }
     }
 
     private fun detachSessionEffects(sessionId: Int) {
@@ -329,29 +483,10 @@ class AudioAlchemyService : Service() {
         try { loudnessEnhancers.remove(sessionId)?.apply { enabled = false; release() } } catch (e: Exception) {}
     }
 
-    private fun applyStudioEnhancements() {
-        val isEnhancer = _audioState.value.isEnhancerEnabled
-        val state = _audioState.value
-        virtualizers.values.forEach { virt ->
-            try {
-                if (virt.strengthSupported) virt.setStrength(if (isEnhancer) state.virtualizerStrength.toShort() else 0.toShort())
-                virt.enabled = isEnhancer
-            } catch (e: Exception) {}
-        }
-        bassBoosts.values.forEach { bb ->
-            try {
-                if (bb.strengthSupported) bb.setStrength(if (isEnhancer) state.bassBoostStrength.toShort() else 0.toShort())
-                bb.enabled = isEnhancer
-            } catch (e: Exception) {}
-        }
-        loudnessEnhancers.values.forEach { le ->
-            try {
-                le.setTargetGain(if (isEnhancer) state.loudnessGainMb else 0)
-                le.enabled = isEnhancer
-            } catch (e: Exception) {}
-        }
-    }
-
+    /**
+     * FFT Spectral processor for Visualizer and Telemetry.
+     * CRITICAL: Strictly observational - NEVER mutates hardware EQ filters in real-time.
+     */
     private fun processFft(fft: ByteArray?, samplingRate: Int) {
         if (fft == null || fft.size < 4) return
         val srHz = if (samplingRate > 100000) samplingRate / 1000 else samplingRate
@@ -387,52 +522,41 @@ class AudioAlchemyService : Service() {
         for (i in 1 until n) if (mags[i] > mags[peakIdx]) peakIdx = i
         val domFreq = peakIdx.toFloat() * srHz / (fft.size)
 
-        val fftResult = FFTResult(mags, domFreq, maxM, maxM)
         val spectrumBands = computeLogBands(mags, srHz, fft.size)
-
         val state = _audioState.value
-        val activeInstruments = instrumentDetector.detectActiveInstruments(fftResult, srHz, fft.size)
-        val (instrument, confidence) = if (state.isAutoMode && state.soloInstrument == null) {
-            instrumentDetector.detect(fftResult, srHz, fft.size)
-        } else {
-            Pair(state.detectedInstrument, state.confidence)
-        }
-
-        var targetEQ = state.currentEQ
-        if (state.soloInstrument != null) {
-            targetEQ = state.soloInstrument.soloEqBands
-            applyGlobalEQ(targetEQ)
-        } else if (state.isAutoMode && instrument != InstrumentType.UNKNOWN) {
-            targetEQ = instrument.eqBands
-            applyGlobalEQ(targetEQ)
-        }
 
         val now = System.currentTimeMillis()
         var newDiagLog = state.diagnosticLog
         if (now - lastDiagnosticTimeMs > 1200L) {
             lastDiagnosticTimeMs = now
-            val bandGains = targetEQ.toIntArray().joinToString(", ") { "${it}dB" }
+            val bandGains = state.currentEQ.toIntArray().joinToString(", ") { "${it}dB" }
             val hwLevels = getHardwareBandLevelsSummary()
-            val soloInfo = if (state.soloInstrument != null) "Solo Mode (${state.soloInstrument.displayName} +12dB, Others Muted)" else "Full Mix (No Solo)"
-            val liveInsts = if (activeInstruments.isNotEmpty()) activeInstruments.joinToString(", ") { "${it.emoji} ${it.displayName}" } else "Detecting..."
-            val activeSessionStr = if (activeSessions.isNotEmpty()) activeSessions.joinToString(", ") { "Session $it" } else "Global Session 0"
+            val activeSessionStr = if (activeSessions.isNotEmpty()) activeSessions.joinToString(", ") { "Session #$it" } else "Global Session 0"
 
             val dspInfo = if (state.isEnhancerEnabled) {
-                "ON (SubBass ${state.bassBoostStrength / 10}% | 3D Spatial ${state.virtualizerStrength / 10}% [${state.spatialMode.displayName}] | Loudness +${"%.1f".format(state.loudnessGainMb / 100.0)}dB)"
+                "ONLINE (Sub-Bass ${state.bassBoostStrength / 10}% | 3D Spatial ${state.virtualizerStrength / 10}% [${state.spatialMode.displayName}] | Loudness +${"%.1f".format(state.loudnessGainMb / 100.0)}dB)"
             } else {
-                "OFF"
+                "BYPASS"
+            }
+
+            val sourceDesc = if (state.isLocalPlaying) {
+                "Built-in Audio Engine (${state.localTrackTitle})"
+            } else if (lastMediaPackage != "None") {
+                "External Player ($lastMediaPackage)"
+            } else {
+                "Listening for active audio stream..."
             }
 
             newDiagLog = """
                 [SOUND ENHANCER STUDIO DIAGNOSTIC]
                 Time: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(now))}
-                Media Player App: $lastMediaPackage
-                Active Sessions: $activeSessionStr
+                Audio Stream: $sourceDesc
+                Active DSP Sessions: $activeSessionStr
                 Studio Enhancer: $dspInfo
-                Preset Mode: ${state.activePresetMode.displayName}
+                Preset Target: ${state.activePresetMode.displayName}
                 Sample Rate: ${srHz}Hz | FFT Bins: ${fft.size / 2}
                 Peak Amplitude: ${"%.3f".format(maxM)} (${(maxM * 100).toInt()}%) | Dominant: ${"%.0f".format(domFreq)}Hz
-                Vocal/Music Energy: ${"%.1f".format(vocalRatio * 100)}%
+                Midrange/Vocal Energy: ${"%.1f".format(vocalRatio * 100)}%
                 Target 9-Band EQ: [$bandGains]
                 Hardware DSP Level: $hwLevels
             """.trimIndent()
@@ -442,148 +566,11 @@ class AudioAlchemyService : Service() {
 
         _audioState.value = state.copy(
             spectrumBands = spectrumBands,
-            detectedInstrument = instrument,
-            activeDetectedInstruments = activeInstruments,
-            confidence = confidence,
             dominantFrequencyHz = domFreq,
             amplitude = maxM,
             vocalRatio = vocalRatio,
-            currentEQ = targetEQ,
             diagnosticLog = newDiagLog
         )
-    }
-
-    fun toggleSoloInstrument(inst: InstrumentType) {
-        val current = _audioState.value
-        if (current.soloInstrument == inst) {
-            // Un-solo
-            _audioState.value = current.copy(
-                soloInstrument = null,
-                selectedInstruments = emptySet(),
-                isAutoMode = true,
-                activePresetMode = PresetMode.AUTO,
-                currentEQ = EQPreset.BALANCED
-            )
-            applyGlobalEQ(EQPreset.BALANCED)
-        } else {
-            // Solo selected instrument: boost instrument band (+12dB), mute everything else (-12dB)
-            val soloEQ = inst.soloEqBands
-            _audioState.value = current.copy(
-                soloInstrument = inst,
-                selectedInstruments = setOf(inst),
-                isAutoMode = false,
-                activePresetMode = PresetMode.CUSTOM,
-                currentEQ = soloEQ
-            )
-            applyGlobalEQ(soloEQ)
-        }
-    }
-
-    fun setPresetMode(mode: PresetMode) {
-        val current = _audioState.value
-        if (mode == PresetMode.AUTO) {
-            _audioState.value = current.copy(
-                isAutoMode = true,
-                selectedInstruments = emptySet(),
-                activePresetMode = PresetMode.AUTO
-            )
-        } else {
-            val eq = EQPreset.fromMode(mode)
-            applyGlobalEQ(eq)
-            _audioState.value = current.copy(
-                isAutoMode = false,
-                selectedInstruments = emptySet(),
-                activePresetMode = mode,
-                currentEQ = eq
-            )
-        }
-    }
-
-    fun setCustomEQBand(index: Int, gainDb: Int) {
-        val currentEQ = _audioState.value.currentEQ
-        val arr = currentEQ.toIntArray()
-        if (index in arr.indices) {
-            arr[index] = gainDb.coerceIn(-12, 12)
-            val updatedEQ = EQPreset(
-                b63Hz = arr[0], b125Hz = arr[1], b250Hz = arr[2], b500Hz = arr[3],
-                b1kHz = arr[4], b2kHz = arr[5], b4kHz = arr[6], b8kHz = arr[7], b16kHz = arr[8]
-            )
-            applyGlobalEQ(updatedEQ)
-            _audioState.value = _audioState.value.copy(
-                isAutoMode = false,
-                activePresetMode = PresetMode.CUSTOM,
-                currentEQ = updatedEQ
-            )
-        }
-    }
-
-    fun setSelectedInstruments(instruments: Set<InstrumentType>) {
-        if (instruments.isEmpty()) {
-            val currentEQ = EQPreset.BALANCED
-            applyGlobalEQ(currentEQ)
-            _audioState.value = _audioState.value.copy(
-                isAutoMode = false,
-                selectedInstruments = emptySet(),
-                detectedInstrument = InstrumentType.UNKNOWN,
-                activePresetMode = PresetMode.BALANCED,
-                currentEQ = currentEQ
-            )
-        } else {
-            val compositeBands = IntArray(9)
-            for (i in 0 until 9) {
-                compositeBands[i] = instruments.maxOf { inst -> inst.eqBands.toIntArray()[i] }
-            }
-            val compositeEQ = EQPreset(
-                compositeBands[0], compositeBands[1], compositeBands[2], compositeBands[3],
-                compositeBands[4], compositeBands[5], compositeBands[6], compositeBands[7], compositeBands[8]
-            )
-            applyGlobalEQ(compositeEQ)
-            _audioState.value = _audioState.value.copy(
-                isAutoMode = false,
-                selectedInstruments = instruments,
-                detectedInstrument = instruments.first(),
-                activePresetMode = PresetMode.CUSTOM,
-                currentEQ = compositeEQ
-            )
-        }
-    }
-
-    fun setManualInstrument(instrument: InstrumentType) {
-        setSelectedInstruments(setOf(instrument))
-    }
-
-    private fun applyGlobalEQ(preset: EQPreset) {
-        val isEnhancer = _audioState.value.isEnhancerEnabled
-        val targetFreqs = floatArrayOf(63f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f)
-        val gains = preset.toIntArray()
-        val isoLoudnessBoost = if (isEnhancer) intArrayOf(10, 8, 4, 3, 4, 5, 5, 6, 6) else intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0)
-
-        equalizers.values.forEach { eq ->
-            try {
-                val n = eq.numberOfBands.toInt()
-                if (n <= 0) return@forEach
-                val range = eq.bandLevelRange
-
-                for (band in 0 until n) {
-                    val centerHz = eq.getCenterFreq(band.toShort()) / 1000f
-                    var closestIdx = 0
-                    var minDiff = Float.MAX_VALUE
-                    for (i in targetFreqs.indices) {
-                        val diff = kotlin.math.abs(targetFreqs[i] - centerHz)
-                        if (diff < minDiff) {
-                            minDiff = diff
-                            closestIdx = i
-                        }
-                    }
-                    val totalGainDb = gains[closestIdx] + isoLoudnessBoost[closestIdx]
-                    val rawMilliBels = totalGainDb * 100
-                    val milliBels = rawMilliBels.coerceIn(range[0].toInt(), range[1].toInt()).toShort()
-                    eq.setBandLevel(band.toShort(), milliBels)
-                }
-            } catch (e: Exception) {
-                Log.e(tag, "EQ apply failed: ${e.message}")
-            }
-        }
     }
 
     private fun getHardwareBandLevelsSummary(): String {
@@ -638,9 +625,9 @@ class AudioAlchemyService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId, "Music Enhanced",
+                channelId, "Sound Enhancer",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Music Enhanced Studio Equalizer Service" }
+            ).apply { description = "Sound Enhancer Studio Equalizer Service" }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
@@ -652,7 +639,7 @@ class AudioAlchemyService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Music Enhanced Studio Engine")
+            .setContentTitle("Sound Enhancer Studio Engine")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(pendingIntent)
@@ -662,6 +649,7 @@ class AudioAlchemyService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        localAudioEngine.release()
         releaseAllEffects()
     }
 

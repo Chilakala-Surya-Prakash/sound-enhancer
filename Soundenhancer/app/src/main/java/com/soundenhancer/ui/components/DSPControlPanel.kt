@@ -39,7 +39,7 @@ fun DSPControlPanel(
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = SurfaceVar,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+        border = BorderStroke(1.dp, WoodGold.copy(alpha = 0.2f)),
         modifier = modifier
     ) {
         Column(
@@ -98,15 +98,15 @@ fun DSPControlPanel(
                 }
             }
 
-            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+            HorizontalDivider(color = WoodGold.copy(alpha = 0.12f))
 
             // 1. Bass Boost Controller
             DSPSection(
                 icon = Icons.Rounded.Speaker,
-                iconTint = Color(0xFFEF4444),
+                iconTint = EmeraldBright,
                 title = "Sub-Bass Punch",
                 badge = "${(bassBoostStrength / 10)}%",
-                badgeColor = Color(0xFFEF4444)
+                badgeColor = EmeraldBright
             ) {
                 Slider(
                     value = bassBoostStrength.toFloat(),
@@ -114,9 +114,9 @@ fun DSPControlPanel(
                     valueRange = 0f..1000f,
                     steps = 19,
                     colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFFEF4444),
-                        activeTrackColor = Color(0xFFEF4444),
-                        inactiveTrackColor = Color(0xFFEF4444).copy(alpha = 0.2f)
+                        thumbColor = EmeraldBright,
+                        activeTrackColor = EmeraldBright,
+                        inactiveTrackColor = EmeraldBright.copy(alpha = 0.2f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -137,13 +137,13 @@ fun DSPControlPanel(
                             onClick = { onBassBoostChanged(strength) },
                             label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFFEF4444).copy(alpha = 0.25f),
-                                selectedLabelColor = Color(0xFFEF4444)
+                                selectedContainerColor = EmeraldBright.copy(alpha = 0.25f),
+                                selectedLabelColor = EmeraldBright
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
                                 selected = isSelected,
-                                borderColor = if (isSelected) Color(0xFFEF4444) else Color.White.copy(alpha = 0.08f)
+                                borderColor = if (isSelected) EmeraldBright else WoodGold.copy(alpha = 0.15f)
                             ),
                             modifier = Modifier.weight(1f)
                         )
@@ -151,7 +151,7 @@ fun DSPControlPanel(
                 }
             }
 
-            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+            HorizontalDivider(color = WoodGold.copy(alpha = 0.12f))
 
             // 2. 3D Spatial Virtualizer Controller
             DSPSection(
@@ -197,7 +197,7 @@ fun DSPControlPanel(
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
                                 selected = isSelected,
-                                borderColor = if (isSelected) Secondary else Color.White.copy(alpha = 0.08f)
+                                borderColor = if (isSelected) Secondary else WoodGold.copy(alpha = 0.15f)
                             ),
                             modifier = Modifier.weight(1f)
                         )
@@ -205,15 +205,15 @@ fun DSPControlPanel(
                 }
             }
 
-            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+            HorizontalDivider(color = WoodGold.copy(alpha = 0.12f))
 
             // 3. Dynamic Loudness & Studio Gain Controller
             DSPSection(
                 icon = Icons.Rounded.VolumeUp,
-                iconTint = Accent,
+                iconTint = WoodGold,
                 title = "Loudness Enhancer",
                 badge = "+${"%.1f".format(loudnessGainMb / 100.0)} dB",
-                badgeColor = Accent
+                badgeColor = WoodGold
             ) {
                 Slider(
                     value = loudnessGainMb.toFloat(),
@@ -221,9 +221,9 @@ fun DSPControlPanel(
                     valueRange = 0f..600f,
                     steps = 11,
                     colors = SliderDefaults.colors(
-                        thumbColor = Accent,
-                        activeTrackColor = Accent,
-                        inactiveTrackColor = Accent.copy(alpha = 0.2f)
+                        thumbColor = WoodGold,
+                        activeTrackColor = WoodGold,
+                        inactiveTrackColor = WoodGold.copy(alpha = 0.2f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -244,13 +244,13 @@ fun DSPControlPanel(
                             onClick = { onLoudnessGainChanged(gainMb) },
                             label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Accent.copy(alpha = 0.25f),
-                                selectedLabelColor = Accent
+                                selectedContainerColor = WoodGold.copy(alpha = 0.25f),
+                                selectedLabelColor = WoodGold
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
                                 selected = isSelected,
-                                borderColor = if (isSelected) Accent else Color.White.copy(alpha = 0.08f)
+                                borderColor = if (isSelected) WoodGold else WoodGold.copy(alpha = 0.15f)
                             ),
                             modifier = Modifier.weight(1f)
                         )

@@ -21,8 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.audioalchemy.model.PresetMode
-import com.audioalchemy.ui.theme.Primary
-import com.audioalchemy.ui.theme.SurfaceVar
+import com.audioalchemy.ui.theme.*
 
 @Composable
 fun PresetGrid(
@@ -89,7 +88,7 @@ private fun PresetCard(
         label = "preset_bg"
     )
     val borderAnim by animateColorAsState(
-        targetValue = if (isSelected) Primary else Color.White.copy(alpha = 0.08f),
+        targetValue = if (isSelected) Primary else WoodGold.copy(alpha = 0.15f),
         animationSpec = tween(250),
         label = "preset_border"
     )

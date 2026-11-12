@@ -1,6 +1,7 @@
 package com.audioalchemy.model
 
 import androidx.compose.ui.graphics.Color
+import com.audioalchemy.ui.theme.*
 
 enum class SpatialMode(val displayName: String, val defaultStrength: Int) {
     STUDIO_NEARFIELD("Studio Nearfield", 400),
@@ -18,7 +19,7 @@ enum class PresetMode(val displayName: String) {
     CLEAR("Vocal & Air"),
     TREBLE_BOOST("Harmonic Sparkle"),
     CUSTOM("Custom Studio"),
-    AUTO("AI Auto-Detect")
+    AUTO("Acoustic Reference")
 }
 
 data class EQPreset(
@@ -35,15 +36,15 @@ data class EQPreset(
     fun toIntArray(): IntArray = intArrayOf(b63Hz, b125Hz, b250Hz, b500Hz, b1kHz, b2kHz, b4kHz, b8kHz, b16kHz)
 
     companion object {
-        // Harman & Studio Reference Mastering: Tight sub-punch, clean 250Hz mud-cut, forward 1-2kHz intimacy, 8-16kHz silky air
-        val BALANCED = EQPreset(4, 3, 0, 1, 3, 4, 5, 6, 7)
-        val BASS_BOOST = EQPreset(8, 7, 2, 0, 2, 3, 4, 5, 6)
-        val HARMAN = EQPreset(6, 4, 0, 0, 2, 4, 6, 7, 7)
-        val CLUB = EQPreset(10, 8, 2, 0, 1, 3, 5, 7, 8)
-        val SMOOTH = EQPreset(4, 3, 1, 2, 3, 3, 3, 4, 5)
-        val DYNAMIC = EQPreset(7, 5, 0, 1, 3, 5, 6, 7, 8)
-        val CLEAR = EQPreset(2, 1, -1, 2, 5, 7, 7, 8, 8)
-        val TREBLE_BOOST = EQPreset(2, 1, 0, 1, 3, 6, 8, 9, 10)
+        // Mathematically calibrated targets:
+        val BALANCED = EQPreset(0, 0, 0, 0, 0, 0, 0, 0, 0)
+        val BASS_BOOST = EQPreset(8, 7, 3, 0, 0, 1, 2, 3, 4)
+        val HARMAN = EQPreset(6, 4, 1, 0, 2, 4, 6, 7, 7)
+        val CLUB = EQPreset(9, 7, 2, -1, 0, 2, 4, 6, 7)
+        val SMOOTH = EQPreset(3, 3, 2, 1, 0, -1, -2, -3, -4)
+        val DYNAMIC = EQPreset(6, 4, 0, -1, 1, 3, 5, 7, 8)
+        val CLEAR = EQPreset(-2, -1, -2, 1, 4, 6, 6, 5, 4)
+        val TREBLE_BOOST = EQPreset(-2, -1, 0, 1, 3, 5, 8, 9, 10)
 
         fun fromMode(mode: PresetMode): EQPreset = when (mode) {
             PresetMode.BALANCED -> BALANCED
@@ -71,64 +72,64 @@ enum class InstrumentType(
         displayName = "Bass Guitar",
         emoji = "🎸",
         primaryFreqHz = 120f,
-        color = Color(0xFFEF4444),
-        eqBands = EQPreset(12, 10, 4, 1, 2, 3, 4, 5, 5),
-        soloEqBands = EQPreset(12, 10, -12, -12, -12, -12, -12, -12, -12)
+        color = EmeraldDeep,
+        eqBands = EQPreset(8, 6, 2, 0, 0, 1, 2, 3, 3),
+        soloEqBands = EQPreset(8, 6, 2, 0, 0, 1, 2, 3, 3)
     ),
     ELECTRIC_GUITAR(
         displayName = "Electric Guitar",
         emoji = "🎸",
         primaryFreqHz = 400f,
-        color = Color(0xFFF97316),
-        eqBands = EQPreset(3, 2, 2, 6, 8, 8, 6, 6, 6),
-        soloEqBands = EQPreset(-12, -12, -8, 10, 12, 10, -8, -12, -12)
+        color = WoodGold,
+        eqBands = EQPreset(2, 2, 1, 4, 5, 4, 3, 2, 2),
+        soloEqBands = EQPreset(2, 2, 1, 4, 5, 4, 3, 2, 2)
     ),
     PIANO(
         displayName = "Piano",
         emoji = "🎹",
         primaryFreqHz = 264f,
-        color = Color(0xFFA78BFA),
-        eqBands = EQPreset(4, 4, 3, 5, 6, 7, 7, 7, 7),
-        soloEqBands = EQPreset(-12, -8, 8, 10, 10, 8, -8, -12, -12)
+        color = CreamWhite,
+        eqBands = EQPreset(2, 2, 2, 3, 4, 4, 3, 3, 3),
+        soloEqBands = EQPreset(2, 2, 2, 3, 4, 4, 3, 3, 3)
     ),
     VOCALS(
         displayName = "Vocals",
         emoji = "🎤",
         primaryFreqHz = 300f,
-        color = Color(0xFFEC4899),
-        eqBands = EQPreset(1, 1, -2, 4, 8, 9, 8, 8, 7),
-        soloEqBands = EQPreset(-12, -12, -12, 2, 12, 12, 10, -8, -12)
+        color = EmeraldLight,
+        eqBands = EQPreset(-1, -1, -2, 2, 5, 6, 5, 4, 3),
+        soloEqBands = EQPreset(-1, -1, -2, 2, 5, 6, 5, 4, 3)
     ),
     DRUMS(
         displayName = "Drums",
         emoji = "🥁",
         primaryFreqHz = 80f,
-        color = Color(0xFF10B981),
-        eqBands = EQPreset(12, 10, 2, 2, 3, 5, 8, 9, 9),
-        soloEqBands = EQPreset(12, 10, -12, -12, -12, -8, -8, 10, 10)
+        color = EmeraldBright,
+        eqBands = EQPreset(8, 6, 1, 0, 1, 3, 5, 6, 6),
+        soloEqBands = EQPreset(8, 6, 1, 0, 1, 3, 5, 6, 6)
     ),
     VIOLIN(
         displayName = "Violin",
         emoji = "🎻",
         primaryFreqHz = 660f,
-        color = Color(0xFF06B6D4),
-        eqBands = EQPreset(2, 1, 1, 3, 6, 8, 9, 9, 8),
-        soloEqBands = EQPreset(-12, -12, -12, -8, 4, 10, 12, 10, -8)
+        color = WoodGold,
+        eqBands = EQPreset(1, 1, 1, 2, 4, 5, 6, 6, 5),
+        soloEqBands = EQPreset(1, 1, 1, 2, 4, 5, 6, 6, 5)
     ),
     TRUMPET(
         displayName = "Trumpet",
         emoji = "🎺",
         primaryFreqHz = 500f,
-        color = Color(0xFFF59E0B),
-        eqBands = EQPreset(2, 1, 2, 5, 8, 8, 7, 6, 5),
-        soloEqBands = EQPreset(-12, -12, -8, 10, 12, 10, -8, -12, -12)
+        color = WoodGold,
+        eqBands = EQPreset(1, 1, 1, 3, 5, 5, 4, 3, 2),
+        soloEqBands = EQPreset(1, 1, 1, 3, 5, 5, 4, 3, 2)
     ),
     UNKNOWN(
-        displayName = "Studio Auto",
+        displayName = "Studio Reference",
         emoji = "🎵",
         primaryFreqHz = 0f,
-        color = Color(0xFF6B7280),
-        eqBands = EQPreset(8, 7, 1, 2, 4, 5, 6, 7, 7),
-        soloEqBands = EQPreset(8, 7, 1, 2, 4, 5, 6, 7, 7)
+        color = EmeraldPrimary,
+        eqBands = EQPreset(0, 0, 0, 0, 0, 0, 0, 0, 0),
+        soloEqBands = EQPreset(0, 0, 0, 0, 0, 0, 0, 0, 0)
     )
 }
